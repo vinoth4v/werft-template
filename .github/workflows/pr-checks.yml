@@ -17,6 +17,12 @@ jobs:
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
+    # The default GITHUB_TOKEN has no pull-requests scope. Without it,
+    # gitleaks-action's own call to list the PR's commits 403s with
+    # "Resource not accessible by integration" before it scans anything.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
