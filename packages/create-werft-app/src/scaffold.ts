@@ -15,6 +15,7 @@ import {
   getProjectSettings,
   readLinkedProject,
   resolveVercelToken,
+  SSO_ENABLED,
   updateProjectSettings,
 } from "./vercel.ts"
 import { NAME_PATTERN, renderWerftJson, type WerftJson } from "./werft-json.ts"
@@ -351,7 +352,7 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     if (runner.isDryRun) {
       log.step("Configuring the Vercel project")
       log.info(
-        '[dry-run] would PATCH /v9/projects/{id} {"rootDirectory":"apps/web","framework":"nextjs"}',
+        `[dry-run] would PATCH /v9/projects/{id} {"rootDirectory":"apps/web","framework":"nextjs","ssoProtection":${options.vercelSso ? JSON.stringify(SSO_ENABLED) : "null"}}`,
       )
     } else {
       log.step("Configuring the Vercel project")
@@ -368,18 +369,31 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       }
       log.info(`using the token from ${auth.source}`)
 
+      // Vercel applies SSO to every new project as a team-level default, so
+      // clearing it is an explicit act on each one.
       await updateProjectSettings(linked, auth.token, {
         rootDirectory: "apps/web",
         framework: "nextjs",
+        ssoProtection: options.vercelSso ? SSO_ENABLED : null,
       })
 
       const confirmed = await getProjectSettings(linked, auth.token)
-      if (confirmed?.rootDirectory !== "apps/web" || confirmed.framework !== "nextjs") {
+      const ssoMatches = Boolean(confirmed?.ssoProtection) === options.vercelSso
+      if (
+        confirmed?.rootDirectory !== "apps/web" ||
+        confirmed.framework !== "nextjs" ||
+        !ssoMatches
+      ) {
         throw new StepFailure(
-          `Vercel reports rootDirectory=${confirmed?.rootDirectory ?? "unset"} framework=${confirmed?.framework ?? "unset"} after setting apps/web and nextjs`,
+          `Vercel reports rootDirectory=${confirmed?.rootDirectory ?? "unset"} framework=${confirmed?.framework ?? "unset"} sso=${confirmed?.ssoProtection ? "on" : "off"} after asking for apps/web, nextjs and sso ${options.vercelSso ? "on" : "off"}`,
         )
       }
-      log.info("confirmed: rootDirectory = apps/web, framework = nextjs")
+      log.info(
+        `confirmed: rootDirectory = apps/web, framework = nextjs, Vercel SSO ${options.vercelSso ? "on" : "off"}`,
+      )
+      if (!options.vercelSso) {
+        notes.push("Vercel SSO is off — the app's own single-user gate is the access control")
+      }
     }
 
     currentStep = "push environment variables"

@@ -8,6 +8,7 @@ import {
   type LinkedProject,
   normaliseExpiry,
   readLinkedProject,
+  SSO_ENABLED,
   updateProjectSettings,
 } from "./vercel.ts"
 
@@ -28,7 +29,7 @@ function stubFetch(status: number, payload: unknown, seen: Seen[]) {
   })
 }
 
-const SETTINGS = { rootDirectory: "apps/web", framework: "nextjs" } as const
+const SETTINGS = { rootDirectory: "apps/web", framework: "nextjs", ssoProtection: null } as const
 
 const team: LinkedProject = { projectId: "prj_abc", orgId: "team_xyz" }
 const personal: LinkedProject = { projectId: "prj_abc", orgId: "user_xyz" }
@@ -158,24 +159,59 @@ describe("readLinkedProject", () => {
 
 describe("getProjectSettings", () => {
   it("reads the setting back", async () => {
-    stubFetch(200, { rootDirectory: "apps/web", framework: "nextjs" }, [])
+    stubFetch(200, { rootDirectory: "apps/web", framework: "nextjs", ssoProtection: null }, [])
     expect(await getProjectSettings(team, "tok")).toEqual({
       rootDirectory: "apps/web",
       framework: "nextjs",
+      ssoProtection: null,
     })
   })
 
   it("returns null when unset, so an unset value is never mistaken for a match", async () => {
     // An unset framework is exactly the state that failed two real deploys.
-    stubFetch(200, { rootDirectory: null, framework: null }, [])
+    stubFetch(200, { rootDirectory: null, framework: null, ssoProtection: null }, [])
     expect(await getProjectSettings(team, "tok")).toEqual({
       rootDirectory: null,
       framework: null,
+      ssoProtection: null,
     })
   })
 
   it("returns null when the request fails", async () => {
     stubFetch(500, {}, [])
     expect(await getProjectSettings(team, "tok")).toBeNull()
+  })
+})
+
+describe("ssoProtection parsing", () => {
+  it("reads the team default Vercel applies to new projects", async () => {
+    stubFetch(200, { ssoProtection: { deploymentType: "all_except_custom_domains" } }, [])
+
+    const settings = await getProjectSettings(team, "tok")
+
+    expect(settings?.ssoProtection).toEqual({ deploymentType: "all_except_custom_domains" })
+  })
+
+  it("reads a cleared protection as null, so off is distinguishable from on", async () => {
+    stubFetch(200, { ssoProtection: null }, [])
+    expect((await getProjectSettings(team, "tok"))?.ssoProtection).toBeNull()
+  })
+
+  it("sends null to clear it, which is what turns SSO off", async () => {
+    const seen: Seen[] = []
+    stubFetch(200, {}, seen)
+
+    await updateProjectSettings(team, "tok", { ssoProtection: null })
+
+    expect(seen[0]?.body).toContain('"ssoProtection":null')
+  })
+
+  it("sends the deployment type to enable it", async () => {
+    const seen: Seen[] = []
+    stubFetch(200, {}, seen)
+
+    await updateProjectSettings(team, "tok", { ssoProtection: SSO_ENABLED })
+
+    expect(JSON.parse(seen[0]?.body ?? "{}").ssoProtection).toEqual(SSO_ENABLED)
   })
 })

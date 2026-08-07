@@ -17,6 +17,7 @@ export type Options = {
   skipInstall: boolean
   skipBrowsers: boolean
   deploy: boolean
+  vercelSso: boolean
   rollback: boolean
   yes: boolean
   help: boolean
@@ -30,6 +31,7 @@ const BOOLEAN_FLAGS = {
   "skip-browsers": "skipBrowsers",
   deploy: "deploy",
   "no-deploy": "deploy",
+  "vercel-sso": "vercelSso",
   "no-rollback": "rollback",
   private: "private",
   public: "private",
@@ -69,6 +71,9 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     skipBrowsers: false,
     // On by default: Phase 1 is done when one command gives a deployed app.
     deploy: true,
+    // Off by default: the app's own gate is the access control, and Vercel SSO
+    // in front of the whole deployment would break Phase 2 preview URLs.
+    vercelSso: false,
     rollback: true,
     yes: false,
     help: false,
@@ -161,6 +166,7 @@ options:
   --password <password>  hashed locally into .env.local; never transmitted
   --dry-run              do all local work, create no remote resources
   --no-deploy            stop after pushing environment variables
+  --vercel-sso           put Vercel SSO in front of the whole deployment
   --skip-install         do not run pnpm install
   --skip-browsers        do not run playwright install chromium
   --no-rollback          on failure, print cleanup commands but change nothing

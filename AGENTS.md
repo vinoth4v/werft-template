@@ -47,6 +47,15 @@ pnpm create-app --help            # scaffold a new app from this template
 - **Never leave half-created infrastructure.** Anything that creates a remote
   resource records how to remove it, and on failure either removes it or prints
   the exact command that does.
+- **Never print a cleanup command you have not executed successfully.** A
+  command that only looks right is worse than no command: it is trusted, fails,
+  and the resource survives anyway.
+- **Never put Vercel SSO in front of a Werft app by default.** The app's own
+  NextAuth gate is the access control. Vercel SSO gates the whole deployment,
+  which breaks preview URLs and duplicates protection the app already has.
+  Cloudflare Access is the layer for anything needing more. Vercel applies SSO
+  to every new project as a team-level default, so it has to be cleared per
+  project — `--vercel-sso` opts back in.
 - **Never hand-edit generated files** (migrations, `next-env.d.ts`, the token
   stylesheet, lockfile).
 - **Never write a raw colour, spacing, or font value into CSS.** Add a design

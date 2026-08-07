@@ -43,6 +43,13 @@ describe("parseArgs", () => {
     expect(parse("--deploy").deploy).toBe(true)
   })
 
+  it("leaves Vercel SSO off unless asked for", () => {
+    // The app's own gate is the access control; SSO would gate the whole
+    // deployment and break Phase 2 preview URLs.
+    expect(parse().vercelSso).toBe(false)
+    expect(parse("--vercel-sso").vercelSso).toBe(true)
+  })
+
   it("accepts --dry-run", () => {
     expect(parse("--dry-run").dryRun).toBe(true)
   })

@@ -112,9 +112,21 @@ export function extractDeployUrl(output: string): string {
   return /https:\/\/[^\s"'<>,)\]]+/.exec(output)?.[0] ?? ""
 }
 
+/**
+ * Vercel SSO in front of the whole deployment.
+ *
+ * Applied to every new project as a team-level default, and cleared per
+ * project — verified: a bare project is created with it on, PATCHing null takes
+ * effect, and it does not reassert on re-read.
+ */
+export type SsoProtection = { deploymentType: string } | null
+
+export const SSO_ENABLED: SsoProtection = { deploymentType: "all_except_custom_domains" }
+
 export type ProjectSettings = {
   rootDirectory: string | null
   framework: string | null
+  ssoProtection: SsoProtection
 }
 
 /**
@@ -163,10 +175,18 @@ export async function getProjectSettings(
   const body = (await response.json().catch(() => null)) as {
     rootDirectory?: unknown
     framework?: unknown
+    ssoProtection?: unknown
   } | null
+
+  const sso = body?.ssoProtection
+  const deploymentType =
+    typeof sso === "object" && sso !== null
+      ? (sso as { deploymentType?: unknown }).deploymentType
+      : undefined
 
   return {
     rootDirectory: typeof body?.rootDirectory === "string" ? body.rootDirectory : null,
     framework: typeof body?.framework === "string" ? body.framework : null,
+    ssoProtection: typeof deploymentType === "string" ? { deploymentType } : null,
   }
 }
