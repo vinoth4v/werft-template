@@ -1,0 +1,28 @@
+/* Placeholder only. Real tokens arrive as a workspace package in step 2. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.5;
+  color: #18181b;
+  background: #fafafa;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #fafafa;
+    background: #18181b;
+  }
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}

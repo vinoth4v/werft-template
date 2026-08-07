@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+# Postinstall scripts are blocked by default; each one is an explicit decision.
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@types/node@26.2.0'
