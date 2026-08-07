@@ -101,10 +101,23 @@ function scoped(path: string, project: LinkedProject): string {
     : url
 }
 
-export async function setRootDirectory(
+export type ProjectSettings = {
+  rootDirectory: string | null
+  framework: string | null
+}
+
+/**
+ * Both settings matter, and neither is set by `vercel link`.
+ *
+ * rootDirectory tells Vercel the app is in apps/web, so it installs at the
+ * workspace root and builds in the app. framework tells it the output is a
+ * Next.js build rather than a static directory — without it, Vercel looks for
+ * `public/` after a perfectly successful build and fails the deploy.
+ */
+export async function updateProjectSettings(
   project: LinkedProject,
   token: string,
-  rootDirectory: string,
+  settings: Partial<ProjectSettings>,
 ): Promise<void> {
   const response = await fetch(scoped(`/v9/projects/${project.projectId}`, project), {
     method: "PATCH",
@@ -112,7 +125,7 @@ export async function setRootDirectory(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ rootDirectory }),
+    body: JSON.stringify(settings),
   })
 
   if (!response.ok) {
@@ -121,21 +134,28 @@ export async function setRootDirectory(
     } | null
     const detail =
       typeof body?.error?.message === "string" ? body.error.message : response.statusText
-    throw new Error(`Vercel refused to set the root directory (${response.status}): ${detail}`)
+    throw new Error(`Vercel refused the project settings (${response.status}): ${detail}`)
   }
 }
 
-/** Reads it back, so the setting is confirmed rather than assumed. */
-export async function getRootDirectory(
+/** Reads them back, so the settings are confirmed rather than assumed. */
+export async function getProjectSettings(
   project: LinkedProject,
   token: string,
-): Promise<string | null> {
+): Promise<ProjectSettings | null> {
   const response = await fetch(scoped(`/v9/projects/${project.projectId}`, project), {
     headers: { Authorization: `Bearer ${token}` },
   })
 
   if (!response.ok) return null
 
-  const body = (await response.json().catch(() => null)) as { rootDirectory?: unknown } | null
-  return typeof body?.rootDirectory === "string" ? body.rootDirectory : null
+  const body = (await response.json().catch(() => null)) as {
+    rootDirectory?: unknown
+    framework?: unknown
+  } | null
+
+  return {
+    rootDirectory: typeof body?.rootDirectory === "string" ? body.rootDirectory : null,
+    framework: typeof body?.framework === "string" ? body.framework : null,
+  }
 }

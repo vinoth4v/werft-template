@@ -3,11 +3,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
-  getRootDirectory,
+  getProjectSettings,
   type LinkedProject,
   normaliseExpiry,
   readLinkedProject,
-  setRootDirectory,
+  updateProjectSettings,
 } from "./vercel.ts"
 
 afterEach(() => {
@@ -27,26 +27,28 @@ function stubFetch(status: number, payload: unknown, seen: Seen[]) {
   })
 }
 
+const SETTINGS = { rootDirectory: "apps/web", framework: "nextjs" } as const
+
 const team: LinkedProject = { projectId: "prj_abc", orgId: "team_xyz" }
 const personal: LinkedProject = { projectId: "prj_abc", orgId: "user_xyz" }
 
-describe("setRootDirectory", () => {
-  it("PATCHes the project with the root directory", async () => {
+describe("updateProjectSettings", () => {
+  it("PATCHes both the root directory and the framework", async () => {
     const seen: Seen[] = []
     stubFetch(200, {}, seen)
 
-    await setRootDirectory(team, "tok", "apps/web")
+    await updateProjectSettings(team, "tok", SETTINGS)
 
     expect(seen[0]?.method).toBe("PATCH")
     expect(seen[0]?.url).toContain("/v9/projects/prj_abc")
-    expect(JSON.parse(seen[0]?.body ?? "{}")).toEqual({ rootDirectory: "apps/web" })
+    expect(JSON.parse(seen[0]?.body ?? "{}")).toEqual(SETTINGS)
   })
 
   it("scopes the request to the team when the project belongs to one", async () => {
     const seen: Seen[] = []
     stubFetch(200, {}, seen)
 
-    await setRootDirectory(team, "tok", "apps/web")
+    await updateProjectSettings(team, "tok", SETTINGS)
 
     expect(seen[0]?.url).toContain("teamId=team_xyz")
   })
@@ -55,7 +57,7 @@ describe("setRootDirectory", () => {
     const seen: Seen[] = []
     stubFetch(200, {}, seen)
 
-    await setRootDirectory(personal, "tok", "apps/web")
+    await updateProjectSettings(personal, "tok", SETTINGS)
 
     expect(seen[0]?.url).not.toContain("teamId")
   })
@@ -63,14 +65,14 @@ describe("setRootDirectory", () => {
   it("throws with the reason Vercel gave", async () => {
     stubFetch(403, { error: { message: "not authorized" } }, [])
 
-    await expect(setRootDirectory(team, "tok", "apps/web")).rejects.toThrow("not authorized")
+    await expect(updateProjectSettings(team, "tok", SETTINGS)).rejects.toThrow("not authorized")
   })
 
   it("never puts the token in the URL", async () => {
     const seen: Seen[] = []
     stubFetch(200, {}, seen)
 
-    await setRootDirectory(team, "super-secret-token", "apps/web")
+    await updateProjectSettings(team, "super-secret-token", SETTINGS)
 
     expect(seen[0]?.url).not.toContain("super-secret-token")
   })
@@ -124,19 +126,26 @@ describe("readLinkedProject", () => {
   })
 })
 
-describe("getRootDirectory", () => {
+describe("getProjectSettings", () => {
   it("reads the setting back", async () => {
-    stubFetch(200, { rootDirectory: "apps/web" }, [])
-    expect(await getRootDirectory(team, "tok")).toBe("apps/web")
+    stubFetch(200, { rootDirectory: "apps/web", framework: "nextjs" }, [])
+    expect(await getProjectSettings(team, "tok")).toEqual({
+      rootDirectory: "apps/web",
+      framework: "nextjs",
+    })
   })
 
   it("returns null when unset, so an unset value is never mistaken for a match", async () => {
-    stubFetch(200, { rootDirectory: null }, [])
-    expect(await getRootDirectory(team, "tok")).toBeNull()
+    // An unset framework is exactly the state that failed two real deploys.
+    stubFetch(200, { rootDirectory: null, framework: null }, [])
+    expect(await getProjectSettings(team, "tok")).toEqual({
+      rootDirectory: null,
+      framework: null,
+    })
   })
 
   it("returns null when the request fails", async () => {
     stubFetch(500, {}, [])
-    expect(await getRootDirectory(team, "tok")).toBeNull()
+    expect(await getProjectSettings(team, "tok")).toBeNull()
   })
 })

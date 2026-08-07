@@ -11,10 +11,10 @@ import {
   verifyNeonApiKey,
 } from "./neon.ts"
 import {
-  getRootDirectory,
+  getProjectSettings,
   readLinkedProject,
   resolveVercelToken,
-  setRootDirectory,
+  updateProjectSettings,
 } from "./vercel.ts"
 import { NAME_PATTERN, renderWerftJson, type WerftJson } from "./werft-json.ts"
 
@@ -346,12 +346,14 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // Before the first deploy, not after: Vercel otherwise builds this monorepo
     // from the repository root and looks for output there, so the build passes
     // and the deploy fails.
-    currentStep = "set the Vercel root directory"
+    currentStep = "configure the Vercel project"
     if (runner.isDryRun) {
-      log.step("Setting the Vercel root directory")
-      log.info('[dry-run] would PATCH /v9/projects/{id} {"rootDirectory":"apps/web"}')
+      log.step("Configuring the Vercel project")
+      log.info(
+        '[dry-run] would PATCH /v9/projects/{id} {"rootDirectory":"apps/web","framework":"nextjs"}',
+      )
     } else {
-      log.step("Setting the Vercel root directory to apps/web")
+      log.step("Configuring the Vercel project")
       const linked = await readLinkedProject(dir)
       if (!linked) {
         throw new StepFailure("vercel link wrote no .vercel/project.json to read the project from")
@@ -360,20 +362,23 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       const auth = await resolveVercelToken()
       if (!auth) {
         throw new StepFailure(
-          "no Vercel API token: run `vercel login`, or set VERCEL_TOKEN. `vercel link` cannot set the root directory on its own",
+          "no Vercel API token: run `vercel login`, or set VERCEL_TOKEN. `vercel link` sets neither of these settings on its own",
         )
       }
       log.info(`using the token from ${auth.source}`)
 
-      await setRootDirectory(linked, auth.token, "apps/web")
+      await updateProjectSettings(linked, auth.token, {
+        rootDirectory: "apps/web",
+        framework: "nextjs",
+      })
 
-      const confirmed = await getRootDirectory(linked, auth.token)
-      if (confirmed !== "apps/web") {
+      const confirmed = await getProjectSettings(linked, auth.token)
+      if (confirmed?.rootDirectory !== "apps/web" || confirmed.framework !== "nextjs") {
         throw new StepFailure(
-          `Vercel reports the root directory as ${confirmed ?? "unset"} after setting it to apps/web`,
+          `Vercel reports rootDirectory=${confirmed?.rootDirectory ?? "unset"} framework=${confirmed?.framework ?? "unset"} after setting apps/web and nextjs`,
         )
       }
-      log.info("confirmed: rootDirectory = apps/web")
+      log.info("confirmed: rootDirectory = apps/web, framework = nextjs")
     }
 
     currentStep = "push environment variables"
