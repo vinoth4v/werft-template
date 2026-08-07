@@ -1,0 +1,28 @@
+name: PR cleanup
+
+# Mirrors pr-checks.yml's neon-preview job in reverse: whatever a PR's preview
+# branch created, this removes — merged or abandoned, the branch does not
+# outlive the PR.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  neon-preview-cleanup:
+    name: neon-preview-cleanup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node .github/scripts/neon-preview-branch.mjs delete
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GIT_BRANCH: ${{ github.head_ref }}

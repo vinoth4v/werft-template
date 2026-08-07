@@ -345,6 +345,15 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       })
     }
 
+    // Connects the GitHub repo just pushed to this Vercel project, so pushes to
+    // main deploy automatically and PR branches get preview deployments — the
+    // whole premise of Phase 2. Also a prerequisite the API enforces: a
+    // branch-scoped preview env var is refused on a project with no connected
+    // Git repository, discovered by testing that call against a bare project.
+    currentStep = "connect Vercel to the GitHub repository"
+    log.step("Connecting Vercel to the GitHub repository")
+    await runner.remote("vercel", ["git", "connect", "--yes"], { cwd: dir })
+
     // Before the first deploy, not after: Vercel otherwise builds this monorepo
     // from the repository root and looks for output there, so the build passes
     // and the deploy fails.
@@ -396,13 +405,18 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       }
     }
 
+    // Both targets: production for the deployed app, preview so every PR
+    // branch's deployment can authenticate and reach a database too, not just
+    // the default DATABASE_URL a Neon-branch workflow overrides per PR later.
     currentStep = "push environment variables"
-    log.step("Pushing environment variables to Vercel production")
-    for (const [key, value] of Object.entries(envValues)) {
-      await runner.remote("vercel", ["env", "add", key, "production", "--force"], {
-        cwd: dir,
-        input: value,
-      })
+    log.step("Pushing environment variables to Vercel")
+    for (const target of ["production", "preview"]) {
+      for (const [key, value] of Object.entries(envValues)) {
+        await runner.remote("vercel", ["env", "add", key, target, "--force"], {
+          cwd: dir,
+          input: value,
+        })
+      }
     }
 
     // ---- 11. optional deploy --------------------------------------------

@@ -95,6 +95,29 @@ native build steps break fresh installs.
 - Scaffold a new app from itself: copy, install, build, commit, then create the
   GitHub repository, Neon project and Vercel project — cheapest-to-undo first,
   with a dry run that does every local step and creates nothing remote.
+- Gate every pull request on four checks before merge: a secret scan, a
+  typecheck, a build that must exit 0, and a Playwright smoke test against that
+  PR's real Vercel preview URL.
+- Give every pull request its own Neon database branch, migrated and wired to
+  its Vercel preview deployment, deleted when the PR closes.
+
+## Phase 2 repository secrets
+
+The PR pipeline (`.github/workflows/pr-checks.yml`, `pr-cleanup.yml`) needs
+these as GitHub Actions secrets on the app's repository. None of them belong in
+werft.json or any committed file.
+
+| Secret | Where it comes from |
+|---|---|
+| `NEON_API_KEY` | console.neon.tech → Account → API keys |
+| `NEON_PROJECT_ID` | the parent project's ID, printed when `create-werft-app` runs |
+| `VERCEL_TOKEN` | vercel.com → Account → Tokens |
+| `VERCEL_ORG_ID` | the Vercel team ID, only if the project belongs to a team |
+| `VERCEL_PROJECT_ID` | `.vercel/project.json` after `vercel link`, or the Vercel dashboard |
+
+Branch protection on `main` must separately mark the four checks
+(`gitleaks`, `typecheck`, `build`, `preview-smoke`) as required — the workflow
+produces the checks, but cannot make GitHub enforce them.
 
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.
