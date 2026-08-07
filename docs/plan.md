@@ -87,7 +87,6 @@ The only phase that really matters. Everything downstream is plumbing.
 - Next.js App Router + TypeScript strict
 - Auth: NextAuth, single-user gate by default (you're the only user of most of these)
 - Neon + Drizzle, migrations checked in
-- Optional chat module wired to kompass-chat, toggled at scaffold time
 - Your tokenised design package — even minimal. Agents follow imports, not style guides.
 - `werft.json`
 - `AGENTS.md`, with `CLAUDE.md` symlinked to it
@@ -98,6 +97,10 @@ The only phase that really matters. Everything downstream is plumbing.
 **Scaffolding:** a `create-werft-app` script (degit + prompts + `gh repo create` + `vercel link` + Neon project via API). Skip Backstage-style templating entirely.
 
 **Done when:** one command gives you a deployed, authenticated app with a working database in under ten minutes.
+
+**Status — built and green, 2026-08-08.** All three steps done: base scaffold (Next.js 16 App Router, TypeScript strict, Neon + Drizzle with migrations checked in, single-user NextAuth gate on scrypt, Vitest); `@werft/tokens` generating CSS custom properties from one TypeScript source, plus a Playwright smoke test that proves the gate closes; `werft.json` with a validator, and `create-werft-app`. 51 unit tests and 2 browser tests pass; `pnpm -r build` exits 0 from a cold install. AGENTS.md is hand-written with `CLAUDE.md` symlinked to it. The scaffold added no dependencies — `git clone` for degit, `readline/promises` for prompts, `fetch` for the Neon API. Deploying is the default; `--no-deploy` opts out.
+
+**The done-when above is not yet demonstrated.** `create-werft-app` has only been run with `--dry-run`: local work real, nothing remote created. No GitHub repository, Neon project or Vercel deployment has been made from it, so the ten-minute claim is unmeasured and this repo is not yet on GitHub. The first real run measures it directly — record the elapsed time here then.
 
 ---
 

@@ -333,3 +333,21 @@ dd51b6f Add AGENTS.md, written by hand
 ```
 
 Phase 1 is complete: all three steps done. Phase 2 not started.
+
+---
+
+## 7. Addendum — changes made after this report was written
+
+Two follow-ups, both closing gaps this report itself identified:
+
+- **`--deploy` is now the default**, with `--no-deploy` as the escape hatch.
+  Question 2 in §4 asked whether it should be; the answer was yes, because
+  Phase 1's done-when is one command to a deployed app. Anywhere above that
+  describes deploying as opt-in is describing the older behaviour.
+- **The entry point is now executed by a test.** §2 noted that 30 tests passed
+  while the CLI crashed on first invocation, because nothing ran `cli.ts`.
+  `cli.test.ts` now spawns it and asserts the exit codes, including one case
+  named for the exact regression that slipped through.
+
+Still outstanding, and the reason the ten-minute done-when remains unmeasured:
+no provisioning run has touched a real account, and this repo is not on GitHub.

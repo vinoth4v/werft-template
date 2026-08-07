@@ -8,14 +8,16 @@ function parse(...argv: string[]) {
 }
 
 describe("parseArgs", () => {
-  it("defaults to a private, undeployed prototype from the published template", () => {
+  it("defaults to a private prototype, deployed, from the published template", () => {
     const options = parse()
     expect(options.template).toBe(DEFAULT_TEMPLATE)
     expect(options.status).toBe("prototype")
     expect(options.private).toBe(true)
     expect(options.dryRun).toBe(false)
-    expect(options.deploy).toBe(false)
     expect(options.rollback).toBe(true)
+    // One command to a deployed app is the Phase 1 done-when, so deploying is
+    // the default and opting out is the flag.
+    expect(options.deploy).toBe(true)
   })
 
   it("reads values as both --flag value and --flag=value", () => {
@@ -34,6 +36,11 @@ describe("parseArgs", () => {
 
   it("treats --no-rollback as the negative of rollback", () => {
     expect(parse("--no-rollback").rollback).toBe(false)
+  })
+
+  it("treats --no-deploy as the negative of deploy", () => {
+    expect(parse("--no-deploy").deploy).toBe(false)
+    expect(parse("--deploy").deploy).toBe(true)
   })
 
   it("accepts --dry-run", () => {
@@ -71,7 +78,13 @@ describe("parseArgs", () => {
 
   it("documents every flag it accepts", () => {
     const text = helpText()
-    for (const flag of ["--dry-run", "--deploy", "--no-rollback", "--skip-browsers", "--status"]) {
+    for (const flag of [
+      "--dry-run",
+      "--no-deploy",
+      "--no-rollback",
+      "--skip-browsers",
+      "--status",
+    ]) {
       expect(text, flag).toContain(flag)
     }
     expect(text).toContain("NEON_API_KEY")

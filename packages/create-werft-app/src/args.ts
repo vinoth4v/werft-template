@@ -29,12 +29,16 @@ const BOOLEAN_FLAGS = {
   "skip-install": "skipInstall",
   "skip-browsers": "skipBrowsers",
   deploy: "deploy",
+  "no-deploy": "deploy",
   "no-rollback": "rollback",
   private: "private",
   public: "private",
   yes: "yes",
   help: "help",
 } as const
+
+/** Spellings that set their flag false rather than true. */
+const NEGATIVE_FLAGS = new Set(["public", "no-deploy", "no-rollback"])
 
 const VALUE_FLAGS = {
   name: "name",
@@ -63,7 +67,8 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     dryRun: false,
     skipInstall: false,
     skipBrowsers: false,
-    deploy: false,
+    // On by default: Phase 1 is done when one command gives a deployed app.
+    deploy: true,
     rollback: true,
     yes: false,
     help: false,
@@ -91,8 +96,7 @@ export function parseArgs(argv: readonly string[]): ParseResult {
         return { ok: false, error: `--${flag} does not take a value` }
       }
       const key = BOOLEAN_FLAGS[flag as keyof typeof BOOLEAN_FLAGS]
-      // --public and --no-rollback are the negative spellings of their keys.
-      options[key] = flag !== "public" && flag !== "no-rollback"
+      options[key] = !NEGATIVE_FLAGS.has(flag)
       continue
     }
 
@@ -142,6 +146,7 @@ what it does, cheapest-to-undo first:
   3. create the GitHub repository and push
   4. create the Neon project
   5. create and link the Vercel project, push environment variables
+  6. deploy to production, and record the URL in werft.json
 
 options:
   --name <name>          app name; also the repo, Neon and Vercel project name
@@ -155,7 +160,7 @@ options:
   --email <address>      the single operator who may sign in
   --password <password>  hashed locally into .env.local; never transmitted
   --dry-run              do all local work, create no remote resources
-  --deploy               also run a production deploy at the end
+  --no-deploy            stop after pushing environment variables
   --skip-install         do not run pnpm install
   --skip-browsers        do not run playwright install chromium
   --no-rollback          on failure, print cleanup commands but change nothing
