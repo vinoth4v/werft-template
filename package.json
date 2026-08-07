@@ -10,6 +10,7 @@
     "build": "pnpm -r run build",
     "dev": "pnpm --filter web run dev",
     "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter web run test:e2e",
     "typecheck": "pnpm -r run typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",

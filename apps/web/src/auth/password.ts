@@ -15,26 +15,32 @@ const KEY_LENGTH = 64
 const SALT_LENGTH = 16
 
 /**
- * scrypt cost. These happen to equal Node's current defaults, and are pinned
- * here anyway: a future Node release changing its defaults must not silently
- * change how passwords are hashed.
+ * scrypt cost, pinned explicitly so that a future Node release changing its
+ * own defaults cannot silently change how passwords are hashed.
  *
- * N=16384, r=8 costs 128 * N * r bytes => 16 MiB per hash, which stays under
- * Node's 32 MiB scrypt memory ceiling. Raising N means raising `maxmem` too,
- * so the two are not independent knobs.
+ * N=65536, r=8, p=1 costs 128 * N * r = 64 MiB per hash. That is above Node's
+ * 32 MiB default ceiling, so every call must pass `maxmem` too — N and maxmem
+ * are not independent knobs.
  *
- * Both are encoded into every hash string, so raising them later verifies old
- * hashes correctly — a rehash-on-next-sign-in is not needed to move.
+ * All three are encoded into every hash and read back during verification, so
+ * raising them again later keeps existing hashes working.
  */
-const COST = { N: 16384, r: 8, p: 1 } as const
+const COST = { N: 65536, r: 8, p: 1 } as const
 
-// Refuse absurd parameters read from the environment rather than allocating
-// gigabytes because a hash string was mistyped.
-const MAX_N = 1 << 20
+/**
+ * Ceiling on memory a stored hash may ask for.
+ *
+ * Verification takes N and r from the hash string, so a mistyped or hostile
+ * value could otherwise ask Node to allocate gigabytes.
+ */
+const MAX_MEMORY_BYTES = 256 * 1024 * 1024
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(SALT_LENGTH)
-  const key = scryptSync(normalize(password), salt, KEY_LENGTH, { ...COST })
+  const key = scryptSync(normalize(password), salt, KEY_LENGTH, {
+    ...COST,
+    maxmem: maxmemFor(COST.N, COST.r),
+  })
 
   return [PREFIX, COST.N, COST.r, COST.p, salt.toString("hex"), key.toString("hex")].join("$")
 }
@@ -53,7 +59,8 @@ export function verifyPassword(password: string, stored: string): boolean {
   const r = Number(rawR)
   const p = Number(rawP)
   if (![N, r, p].every((value) => Number.isInteger(value) && value > 0)) return false
-  if (N > MAX_N || r > 32 || p > 16) return false
+  if (r > 32 || p > 16) return false
+  if (128 * N * r > MAX_MEMORY_BYTES) return false
 
   const expected = Buffer.from(keyHex, "hex")
   if (expected.length === 0) return false
@@ -64,12 +71,21 @@ export function verifyPassword(password: string, stored: string): boolean {
       N,
       r,
       p,
+      maxmem: maxmemFor(N, r),
     })
   } catch {
     return false
   }
 
   return actual.length === expected.length && timingSafeEqual(actual, expected)
+}
+
+/**
+ * scrypt needs 128 * N * r bytes. Ask for double, so Node's own accounting has
+ * room and does not reject a parameter set we already decided is legitimate.
+ */
+function maxmemFor(N: number, r: number): number {
+  return 128 * N * r * 2
 }
 
 /** Unicode-normalise so the same typed password always hashes the same way. */

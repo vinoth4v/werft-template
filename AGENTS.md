@@ -9,7 +9,8 @@ that way, and keep it short.
 pnpm install
 pnpm dev              # Next dev server
 pnpm build            # must exit 0 — this is the gate that matters
-pnpm test             # Vitest
+pnpm test             # Vitest, unit only
+pnpm test:e2e         # Playwright smoke — needs `pnpm build` first
 pnpm typecheck        # tsc --noEmit
 pnpm lint             # Biome check
 pnpm format           # Biome check --write
@@ -39,7 +40,10 @@ pnpm hash-password '<password>'
 - **Never weaken TypeScript to make an error go away.** No `any`, no
   `@ts-ignore`, no loosening the shared compiler options.
 - **Never commit `.env.local`, or a real secret into `.env.example`.**
-- **Never hand-edit generated files** (migrations, `next-env.d.ts`, lockfile).
+- **Never hand-edit generated files** (migrations, `next-env.d.ts`, the token
+  stylesheet, lockfile).
+- **Never write a raw colour, spacing, or font value into CSS.** Add a design
+  token and reference it. A literal in a stylesheet is a token nobody can find.
 
 ## Blessed dependencies
 
@@ -50,7 +54,8 @@ first — say what you want and why, then wait.
 - Auth: `next-auth`
 - Data: `drizzle-orm`, `drizzle-kit`, `@neondatabase/serverless`
 - Validation: `zod`
-- Tooling: `typescript`, `@biomejs/biome`, `vitest`
+- Design: `@werft/tokens` (in this workspace, no runtime dependencies)
+- Tooling: `typescript`, `@biomejs/biome`, `vitest`, `@playwright/test`
 
 Password hashing uses `node:crypto` scrypt. Do not add `bcrypt` or `argon2` —
 native build steps break fresh installs.
@@ -65,6 +70,10 @@ native build steps break fresh installs.
   that write fails.
 - Validate its own environment on first use, with an error naming what is
   missing.
+- Style itself from a design token package: one TypeScript source of truth that
+  generates CSS custom properties, importable both as values and as a
+  stylesheet, with light and dark schemes.
+- Prove in a browser that the gate closes, without needing a database.
 
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.

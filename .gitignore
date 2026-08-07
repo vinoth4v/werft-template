@@ -2,12 +2,16 @@ node_modules/
 .next/
 out/
 build/
+dist/
 coverage/
 *.tsbuildinfo
 
 .env
 .env.local
 .env.*.local
+
+test-results/
+playwright-report/
 
 .DS_Store
 .vercel
