@@ -100,6 +100,38 @@ class Runner {
     return this.local(command, args, options)
   }
 
+  /**
+   * Like `remote`, but a nonzero exit is not automatically a failure — the
+   * caller decides, from the actual output, whether this run of the command
+   * was redundant rather than wrong.
+   *
+   * `vercel git connect --yes` exits 1 when the repository is already
+   * connected — which happens whenever `vercel link` auto-detected it — and
+   * that is success, not a step to roll everything back over.
+   */
+  async remoteTolerant(
+    command: string,
+    args: readonly string[],
+    alreadyDone: (result: ExecResult) => boolean,
+    options?: ExecOptions,
+  ): Promise<ExecResult> {
+    if (this.dryRun) {
+      this.log.info(`[dry-run] would run: ${quote(command, args)}`)
+      return { code: 0, stdout: "", stderr: "" }
+    }
+
+    this.log.info(`$ ${quote(command, args)}`)
+    const result = await exec(command, args, options)
+    if (result.code === 0) return result
+    if (alreadyDone(result)) {
+      this.log.info("already done — treating as success")
+      return result
+    }
+    throw new StepFailure(
+      `${quote(command, args)} exited ${result.code}${result.stderr ? `\n${indent(result.stderr)}` : ""}`,
+    )
+  }
+
   get isDryRun(): boolean {
     return this.dryRun
   }
@@ -352,7 +384,13 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // Git repository, discovered by testing that call against a bare project.
     currentStep = "connect Vercel to the GitHub repository"
     log.step("Connecting Vercel to the GitHub repository")
-    await runner.remote("vercel", ["git", "connect", "--yes"], { cwd: dir })
+    await runner.remoteTolerant(
+      "vercel",
+      ["git", "connect", "--yes"],
+      (result) =>
+        result.stdout.includes("already connected") || result.stderr.includes("already connected"),
+      { cwd: dir },
+    )
 
     // Before the first deploy, not after: Vercel otherwise builds this monorepo
     // from the repository root and looks for output there, so the build passes
