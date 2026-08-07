@@ -349,5 +349,14 @@ Two follow-ups, both closing gaps this report itself identified:
   `cli.test.ts` now spawns it and asserts the exit codes, including one case
   named for the exact regression that slipped through.
 
-Still outstanding, and the reason the ten-minute done-when remains unmeasured:
-no provisioning run has touched a real account, and this repo is not on GitHub.
+**Superseded since:** the done-when is now met and measured at 87 seconds, this
+repo is on GitHub, and Vercel SSO is off by default with `--vercel-sso` to opt
+in. Anywhere above that treats the ten-minute claim as unmeasured, or describes
+deploying as opt-in, is describing an earlier state. `docs/plan.md` carries the
+current Phase 1 status; prefer it over this report where they disagree.
+
+Six defects surfaced only by real provisioning runs, all fixed and each with a
+test: the Vercel `rootDirectory` and `framework` settings, the Neon key
+verification endpoint, the CLI token expiry unit, `vercel project rm --yes`, the
+deploy URL capture, and `apps/web` not building its own workspace dependency.
+The last of those would have failed silently on Phase 2's Git deploys.
