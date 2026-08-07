@@ -12,7 +12,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "node scripts/build-css.ts",
+    "build": "node --experimental-strip-types scripts/build-css.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

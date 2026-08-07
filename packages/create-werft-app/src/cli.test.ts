@@ -14,11 +14,18 @@ import { describe, expect, it } from "vitest"
 const CLI = fileURLToPath(new URL("./cli.ts", import.meta.url))
 
 function runCli(...args: string[]) {
-  return spawnSync(process.execPath, [CLI, ...args], {
-    encoding: "utf8",
-    // No stdin: the CLI must not wait for a prompt it cannot get an answer to.
-    stdio: ["ignore", "pipe", "pipe"],
-  })
+  return spawnSync(
+    process.execPath,
+    // Explicit rather than relying on a Node version defaulting this on: that
+    // assumption broke a CI job pinned to Node 22.13, the version pnpm 11
+    // itself requires, which does not strip types without the flag.
+    ["--experimental-strip-types", CLI, ...args],
+    {
+      encoding: "utf8",
+      // No stdin: the CLI must not wait for a prompt it cannot get an answer to.
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  )
 }
 
 describe("cli", () => {
