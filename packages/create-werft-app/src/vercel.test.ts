@@ -1,5 +1,14 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { getRootDirectory, type LinkedProject, setRootDirectory } from "./vercel.ts"
+import {
+  getRootDirectory,
+  type LinkedProject,
+  normaliseExpiry,
+  readLinkedProject,
+  setRootDirectory,
+} from "./vercel.ts"
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -64,6 +73,54 @@ describe("setRootDirectory", () => {
     await setRootDirectory(team, "super-secret-token", "apps/web")
 
     expect(seen[0]?.url).not.toContain("super-secret-token")
+  })
+})
+
+describe("normaliseExpiry", () => {
+  it("treats a seconds timestamp as seconds", () => {
+    // The regression: the CLI writes seconds, this was compared against a
+    // millisecond clock, so a working credential looked decades expired and a
+    // real provisioning run failed on "no Vercel API token".
+    const seconds = 1_786_000_000
+    expect(normaliseExpiry(seconds)).toBe(seconds * 1000)
+  })
+
+  it("leaves a milliseconds timestamp alone", () => {
+    const millis = 1_786_000_000_000
+    expect(normaliseExpiry(millis)).toBe(millis)
+  })
+
+  it("puts a seconds expiry in the future, not the distant past", () => {
+    const anHourFromNowInSeconds = Math.floor(Date.now() / 1000) + 3600
+    expect(normaliseExpiry(anHourFromNowInSeconds)).toBeGreaterThan(Date.now())
+  })
+
+  it("has no opinion when there is no usable value", () => {
+    for (const value of [undefined, null, 0, -1, "soon", Number.NaN]) {
+      expect(normaliseExpiry(value), String(value)).toBeUndefined()
+    }
+  })
+})
+
+describe("readLinkedProject", () => {
+  it("reads the projectId and orgId vercel link wrote", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "werft-link-"))
+    await mkdir(join(dir, ".vercel"), { recursive: true })
+    await writeFile(
+      join(dir, ".vercel", "project.json"),
+      JSON.stringify({ projectId: "prj_1", orgId: "team_1", extra: "ignored" }),
+    )
+
+    expect(await readLinkedProject(dir)).toEqual({ projectId: "prj_1", orgId: "team_1" })
+  })
+
+  it("returns null when the link is missing or incomplete", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "werft-link-"))
+    expect(await readLinkedProject(dir)).toBeNull()
+
+    await mkdir(join(dir, ".vercel"), { recursive: true })
+    await writeFile(join(dir, ".vercel", "project.json"), JSON.stringify({ projectId: "prj_1" }))
+    expect(await readLinkedProject(dir)).toBeNull()
   })
 })
 

@@ -50,7 +50,8 @@ export async function resolveVercelToken(now: number = Date.now()): Promise<Verc
       continue
     }
 
-    const expired = typeof parsed.expiresAt === "number" && parsed.expiresAt <= now
+    const expiry = normaliseExpiry(parsed.expiresAt)
+    const expired = expiry !== undefined && expiry <= now
     if (typeof parsed.token === "string" && parsed.token !== "" && !expired) {
       return { token: parsed.token, source: "vercel CLI" }
     }
@@ -58,6 +59,19 @@ export async function resolveVercelToken(now: number = Date.now()): Promise<Verc
 
   const fromEnv = process.env.VERCEL_TOKEN
   return fromEnv ? { token: fromEnv, source: "VERCEL_TOKEN" } : null
+}
+
+/**
+ * Returns the expiry in milliseconds, whatever unit it was written in.
+ *
+ * The CLI writes seconds. Comparing that against Date.now() in milliseconds
+ * makes every token look long expired, which silently discards a perfectly good
+ * credential — so the unit is inferred rather than assumed. Any plausible
+ * millisecond timestamp is far above 1e12; any second timestamp is far below.
+ */
+export function normaliseExpiry(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined
+  return value < 1e12 ? value * 1000 : value
 }
 
 /** Reads what `vercel link` wrote, which identifies the project unambiguously. */
