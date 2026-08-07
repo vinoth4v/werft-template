@@ -329,8 +329,11 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     if (!runner.isDryRun) {
       ledger.record({
         what: `Vercel project ${name}`,
-        cleanup: `vercel project rm ${name} --yes`,
-        undo: async () => (await exec("vercel", ["project", "rm", name, "--yes"])).code === 0,
+        // `vercel project rm` has no --yes: it rejects the flag outright and
+        // then prompts. The confirmation is piped in.
+        cleanup: `printf 'y\\n' | vercel project rm ${name}`,
+        undo: async () =>
+          (await exec("vercel", ["project", "rm", name], { input: "y\n" })).code === 0,
       })
     }
 
