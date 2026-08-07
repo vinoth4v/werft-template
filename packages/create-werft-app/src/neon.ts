@@ -16,6 +16,33 @@ export type NeonProject = {
   connectionUri: string
 }
 
+export type NeonKeyCheck = "ok" | "rejected" | "unreachable"
+
+/**
+ * Verifies the API key before anything is created.
+ *
+ * Checking that NEON_API_KEY is merely set is not enough — a stale key, or a
+ * placeholder someone exported verbatim, would pass that test and then fail at
+ * project creation, by which point a GitHub repository already exists. Ordering
+ * steps cheapest-to-undo first only helps if credentials are proven first.
+ *
+ * A GET creates nothing, so this is safe to run during a dry run too.
+ */
+export async function verifyNeonApiKey(apiKey: string): Promise<NeonKeyCheck> {
+  let response: Response
+  try {
+    response = await fetch(`${NEON_API}/users/me`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+  } catch {
+    return "unreachable"
+  }
+
+  if (response.ok) return "ok"
+  // Anything else — 500s, rate limits — is not evidence the key is wrong.
+  return response.status === 401 || response.status === 403 ? "rejected" : "unreachable"
+}
+
 export async function createNeonProject(name: string, apiKey: string): Promise<NeonProject> {
   const response = await fetch(`${NEON_API}/projects`, {
     method: "POST",

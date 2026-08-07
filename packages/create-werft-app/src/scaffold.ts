@@ -4,7 +4,12 @@ import { join, resolve } from "node:path"
 import type { Options } from "./args.ts"
 import { type ExecOptions, type ExecResult, exec, quote } from "./exec.ts"
 import { Ledger, type Resource } from "./ledger.ts"
-import { createNeonProject, deleteNeonProject, neonDeleteCommand } from "./neon.ts"
+import {
+  createNeonProject,
+  deleteNeonProject,
+  neonDeleteCommand,
+  verifyNeonApiKey,
+} from "./neon.ts"
 import { NAME_PATTERN, renderWerftJson, type WerftJson } from "./werft-json.ts"
 
 export type Logger = {
@@ -146,6 +151,22 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
         notes,
         "NEON_API_KEY is not set — create a key at console.neon.tech",
       )
+    } else {
+      log.info("checking NEON_API_KEY")
+      const check = await verifyNeonApiKey(neonApiKey)
+      if (check === "rejected") {
+        requireForRealRun(
+          runner,
+          notes,
+          "Neon rejected NEON_API_KEY — check it is current, and not a placeholder exported verbatim",
+        )
+      } else if (check === "unreachable") {
+        requireForRealRun(
+          runner,
+          notes,
+          "could not reach the Neon API to verify NEON_API_KEY — check the network before provisioning",
+        )
+      }
     }
 
     if (!options.email && !options.dryRun) {
