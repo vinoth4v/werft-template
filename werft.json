@@ -1,0 +1,9 @@
+{
+  "name": "werft-template",
+  "description": "Template repo for the Werft harness: Next.js, Neon + Drizzle, single-user auth.",
+  "stack": ["next", "typescript", "neon", "drizzle", "next-auth", "vercel"],
+  "url": "",
+  "tags": ["template", "werft", "infrastructure"],
+  "status": "prototype",
+  "private": true
+}

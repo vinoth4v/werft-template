@@ -16,7 +16,8 @@
     "format": "biome check --write .",
     "db:generate": "pnpm --filter web run db:generate",
     "db:migrate": "pnpm --filter web run db:migrate",
-    "hash-password": "node apps/web/scripts/hash-password.ts"
+    "hash-password": "node apps/web/scripts/hash-password.ts",
+    "create-app": "node packages/create-werft-app/src/cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",

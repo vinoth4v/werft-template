@@ -16,7 +16,8 @@ pnpm lint             # Biome check
 pnpm format           # Biome check --write
 pnpm db:generate      # diff schema -> new SQL migration (no database needed)
 pnpm db:migrate       # apply migrations to DATABASE_URL
-pnpm hash-password '<password>'
+pnpm hash-password '<password>'   # or pipe it on stdin
+pnpm create-app --help            # scaffold a new app from this template
 ```
 
 ## Never do this
@@ -40,6 +41,12 @@ pnpm hash-password '<password>'
 - **Never weaken TypeScript to make an error go away.** No `any`, no
   `@ts-ignore`, no loosening the shared compiler options.
 - **Never commit `.env.local`, or a real secret into `.env.example`.**
+- **Never put a secret in `werft.json`.** It is committed, the repo may be
+  public, and CI reads it into a registry. Connection strings, tokens and keys
+  come from the environment.
+- **Never leave half-created infrastructure.** Anything that creates a remote
+  resource records how to remove it, and on failure either removes it or prints
+  the exact command that does.
 - **Never hand-edit generated files** (migrations, `next-env.d.ts`, the token
   stylesheet, lockfile).
 - **Never write a raw colour, spacing, or font value into CSS.** Add a design
@@ -74,6 +81,11 @@ native build steps break fresh installs.
   generates CSS custom properties, importable both as values and as a
   stylesheet, with light and dark schemes.
 - Prove in a browser that the gate closes, without needing a database.
+- Describe itself to the Werft registry in `werft.json`, validated against a
+  schema that rejects unknown keys and anything shaped like a secret.
+- Scaffold a new app from itself: copy, install, build, commit, then create the
+  GitHub repository, Neon project and Vercel project — cheapest-to-undo first,
+  with a dry run that does every local step and creates nothing remote.
 
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.
