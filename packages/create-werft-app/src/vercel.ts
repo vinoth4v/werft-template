@@ -101,6 +101,17 @@ function scoped(path: string, project: LinkedProject): string {
     : url
 }
 
+/**
+ * Pulls the deployment URL out of `vercel deploy` output.
+ *
+ * Stops at quotes, commas and angle brackets as well as whitespace: the CLI
+ * prints the URL inside JSON-ish context, and a greedy match swallowed the
+ * closing `",` and wrote a malformed URL into werft.json.
+ */
+export function extractDeployUrl(output: string): string {
+  return /https:\/\/[^\s"'<>,)\]]+/.exec(output)?.[0] ?? ""
+}
+
 export type ProjectSettings = {
   rootDirectory: string | null
   framework: string | null

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  extractDeployUrl,
   getProjectSettings,
   type LinkedProject,
   normaliseExpiry,
@@ -75,6 +76,35 @@ describe("updateProjectSettings", () => {
     await updateProjectSettings(team, "super-secret-token", SETTINGS)
 
     expect(seen[0]?.url).not.toContain("super-secret-token")
+  })
+})
+
+describe("extractDeployUrl", () => {
+  it("stops at the closing quote and comma", () => {
+    // The regression: a greedy match wrote
+    // https://werft-test-4-....vercel.app", into werft.json.
+    const output = '  Production      https://werft-test-4-abc-vinoth4vs-projects.vercel.app",\n'
+
+    expect(extractDeployUrl(output)).toBe("https://werft-test-4-abc-vinoth4vs-projects.vercel.app")
+  })
+
+  it("produces something that parses as a URL", () => {
+    const extracted = extractDeployUrl('x https://example.vercel.app", y')
+    expect(() => new URL(extracted)).not.toThrow()
+    expect(new URL(extracted).hostname).toBe("example.vercel.app")
+  })
+
+  it("takes the first URL from multi-line output", () => {
+    const output = [
+      "  Inspect         https://vercel.com/team/proj/abc123",
+      "  Production      https://proj.vercel.app",
+    ].join("\n")
+
+    expect(extractDeployUrl(output)).toBe("https://vercel.com/team/proj/abc123")
+  })
+
+  it("returns empty when there is no URL, rather than a fragment", () => {
+    expect(extractDeployUrl("Error: build failed")).toBe("")
   })
 })
 

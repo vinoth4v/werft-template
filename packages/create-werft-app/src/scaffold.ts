@@ -11,6 +11,7 @@ import {
   verifyNeonApiKey,
 } from "./neon.ts"
 import {
+  extractDeployUrl,
   getProjectSettings,
   readLinkedProject,
   resolveVercelToken,
@@ -395,7 +396,7 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       currentStep = "deploy"
       log.step("Deploying to production")
       const deployed = await runner.remote("vercel", ["deploy", "--prod", "--yes"], { cwd: dir })
-      url = /https:\/\/[^\s]+/.exec(deployed.stdout)?.[0] ?? ""
+      url = extractDeployUrl(deployed.stdout)
       if (url === "" && !runner.isDryRun) {
         notes.push("the deploy produced no URL — set werft.json url by hand")
       }
