@@ -1,5 +1,6 @@
 export { DEFAULT_TEMPLATE, helpText, type Options, parseArgs } from "./args.ts"
 export { Ledger, type Resource } from "./ledger.ts"
+export { formatCleanupReport } from "./report.ts"
 export { type Logger, type ScaffoldOutcome, scaffold } from "./scaffold.ts"
 export {
   APP_STATUSES,

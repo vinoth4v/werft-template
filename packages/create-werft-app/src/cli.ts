@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises"
 import { helpText, parseArgs } from "./args.ts"
+import { formatCleanupReport } from "./report.ts"
 import { type Logger, scaffold } from "./scaffold.ts"
 
 const logger: Logger = {
@@ -65,16 +66,7 @@ if (outcome.ok) {
 
 console.error(`\n✗ Failed at: ${outcome.failedAt}`)
 
-if (outcome.orphaned.length > 0) {
-  console.error(`\n${outcome.orphaned.length} resource(s) could not be removed automatically.`)
-  console.error("Run these to clean up:\n")
-  for (const resource of outcome.orphaned) {
-    console.error(`  # ${resource.what}`)
-    console.error(`  ${resource.cleanup}\n`)
-  }
-} else {
-  console.error("\nNothing was left behind.")
-}
+console.error(`\n${formatCleanupReport(outcome.orphaned)}`)
 
 if (outcome.notes.length > 0) {
   console.error("Notes:")
