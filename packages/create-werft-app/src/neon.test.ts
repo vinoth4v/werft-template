@@ -39,6 +39,20 @@ describe("verifyNeonApiKey", () => {
     expect(await verifyNeonApiKey("napi_good")).toBe("unreachable")
   })
 
+  it("verifies against the endpoint the scaffold actually uses", async () => {
+    // /users/me 404s on some plans, and Neon authenticates before it routes, so
+    // a good key there is indistinguishable from a broken API. Regression guard.
+    let seenUrl = ""
+    stubFetch((url) => {
+      seenUrl = url
+      return new Response("{}", { status: 200 })
+    })
+
+    await verifyNeonApiKey("napi_good")
+
+    expect(seenUrl.endsWith("/projects")).toBe(true)
+  })
+
   it("sends the key as a bearer header, never in the URL", async () => {
     let seenUrl = ""
     let seenAuth: string | undefined
