@@ -14,7 +14,7 @@ const outputPath = join(packageRoot, "dist", "tokens.css")
  */
 const themeFile = await readFile(join(packageRoot, "theme.json"), "utf8").catch(() => "")
 const requested = themeFile ? (JSON.parse(themeFile) as { theme?: string }).theme : undefined
-const theme = (requested ?? "werft") as ThemeName
+const theme = (requested ?? "kimiEarth") as ThemeName
 
 if (!THEME_NAMES.includes(theme)) {
   console.error(`theme.json names unknown theme "${theme}" — known: ${THEME_NAMES.join(", ")}`)

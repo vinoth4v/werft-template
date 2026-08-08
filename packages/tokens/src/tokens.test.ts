@@ -59,6 +59,8 @@ describe("themes", () => {
   it("themes actually differ from the default where they claim to", () => {
     expect(renderCss("madras")).toContain("#b0421f")
     expect(renderCss("deck")).toContain("#4ade80")
+    expect(renderCss("kimiEarth")).toContain("#b85c3e")
+    expect(renderCss("kimiTerminal")).toContain("#f59e0b")
     expect(renderCss("werft")).not.toContain("#b0421f")
   })
 })

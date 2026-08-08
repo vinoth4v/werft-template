@@ -73,7 +73,7 @@ on:
         description: "Design theme"
         required: true
         type: choice
-        options: [werft, madras, deck, nordlicht, tinte]
+        options: [werft, madras, deck, nordlicht, tinte, kimiEarth, kimiCocoa, kimiEditorial, kimiTerminal]
         default: werft
       first_task:
         description: "Optional first task — filed as an @claude issue in the new repo, so Claude Code starts building immediately"

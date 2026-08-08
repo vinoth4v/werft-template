@@ -6,8 +6,8 @@ import "@werft/tokens/tokens.css"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Werft app",
-  description: "Scaffolded from werft-template",
+  title: "Werft Marketplace",
+  description: "Discover, scaffold, and launch Werft apps.",
 }
 
 export const viewport: Viewport = {

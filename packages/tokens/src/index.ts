@@ -1,4 +1,5 @@
 export { customPropertyNames, renderCss } from "./css.ts"
+export { THEME_NAMES, THEMES, type Theme, type ThemeName } from "./themes.ts"
 export {
   type ColorToken,
   color,
