@@ -18,6 +18,11 @@ on:
         description: "App name — becomes the repo, database, Vercel project and URL"
         required: true
         type: string
+      title:
+        description: "Display name, e.g. \"My App\" (defaults to the app name)"
+        required: false
+        type: string
+        default: ""
       description:
         description: "One line for the registry card"
         required: true
@@ -121,6 +126,7 @@ jobs:
       - name: Run create-werft-app
         env:
           APP_NAME: ${{ inputs.app_name }}
+          APP_TITLE: ${{ inputs.title }}
           APP_DESCRIPTION: ${{ inputs.description }}
           APP_EMAIL: ${{ inputs.email }}
           APP_TAGS: ${{ inputs.tags }}
@@ -135,6 +141,7 @@ jobs:
           # applies to a human running the CLI.
           FLAGS=(--name "$APP_NAME" --description "$APP_DESCRIPTION" --email "$APP_EMAIL" \
                  --status "$APP_STATUS" --theme "$APP_THEME" --dir "$RUNNER_TEMP/$APP_NAME" --yes)
+          [ -n "$APP_TITLE" ] && FLAGS+=(--title "$APP_TITLE")
           [ -n "$APP_TAGS" ] && FLAGS+=(--tags "$APP_TAGS")
           [ -n "$APP_REGION" ] && FLAGS+=(--region "$APP_REGION")
           [ "${{ inputs.visibility }}" = "public" ] && FLAGS+=(--public) || FLAGS+=(--private)

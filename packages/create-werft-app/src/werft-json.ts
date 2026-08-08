@@ -15,6 +15,12 @@ export type AppStatus = (typeof APP_STATUSES)[number]
 
 export type WerftJson = {
   name: string
+  /**
+   * How the app brands itself, for display only — "SruthiScribe Learn" rather
+   * than the `sruthiscribe-learn` slug `name` is forced to be by doubling as a
+   * repo, database and subdomain. Optional; without it the slug is displayed.
+   */
+  title?: string
   description: string
   stack: string[]
   url: string
@@ -28,6 +34,7 @@ export const NAME_PATTERN = /^[a-z][a-z0-9-]{0,38}[a-z0-9]$/
 
 const KEY_ORDER = [
   "name",
+  "title",
   "description",
   "stack",
   "url",
@@ -59,6 +66,16 @@ export function validateWerftJson(value: unknown): string[] {
 
   if (typeof record.description !== "string" || record.description.trim() === "") {
     problems.push("description must be a non-empty string")
+  }
+
+  // Optional, but a present-and-empty title would render a blank heading,
+  // which is worse than falling back to the slug.
+  if (record.title !== undefined) {
+    if (typeof record.title !== "string" || record.title.trim() === "") {
+      problems.push("title must be a non-empty string when present")
+    } else if (record.title.length > 60) {
+      problems.push("title must be 60 characters or fewer")
+    }
   }
 
   if (typeof record.url !== "string") {

@@ -1,18 +1,10 @@
 {
   "name": "werft-template",
+  "title": "Werft Template",
   "description": "The starting point every new app here is built from.",
-  "stack": [
-    "next",
-    "typescript",
-    "neon",
-    "drizzle",
-    "next-auth",
-    "vercel"
-  ],
+  "stack": ["next", "typescript", "neon", "drizzle", "next-auth", "vercel"],
   "url": "",
-  "tags": [
-    "tools"
-  ],
+  "tags": ["tools"],
   "status": "prototype",
   "private": true
 }

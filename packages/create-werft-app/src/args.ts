@@ -11,6 +11,7 @@ export const DEFAULT_TEMPLATE = "https://github.com/vinoth4v/werft-template.git"
 
 export type Options = {
   name: string | undefined
+  title: string | undefined
   description: string | undefined
   dir: string | undefined
   template: string
@@ -55,6 +56,7 @@ const NEGATIVE_FLAGS = new Set(["public", "no-deploy", "no-rollback"])
 
 const VALUE_FLAGS = {
   name: "name",
+  title: "title",
   description: "description",
   dir: "dir",
   template: "template",
@@ -70,6 +72,7 @@ const VALUE_FLAGS = {
 export function parseArgs(argv: readonly string[]): ParseResult {
   const options: Options = {
     name: undefined,
+    title: undefined,
     description: undefined,
     dir: undefined,
     template: DEFAULT_TEMPLATE,
@@ -185,6 +188,7 @@ what it does, cheapest-to-undo first:
 
 options:
   --name <name>          app name; also the repo, Neon and Vercel project name
+  --title <text>         display name, e.g. "My App" (default: the name itself)
   --description <text>   one line, for the registry card
   --dir <path>           where to write it (default: ~/Documents/workspace/<name>)
   --template <url|path>  template to copy (default: ${DEFAULT_TEMPLATE})

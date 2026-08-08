@@ -84,3 +84,44 @@ describe("werft.json", () => {
     expect(validateWerftJson(parsed)).toEqual([])
   })
 })
+
+describe("title", () => {
+  it("is optional — an app without branding is still valid", () => {
+    const { title, ...withoutTitle } = { ...valid, title: "X" }
+    expect(validateWerftJson(withoutTitle)).toEqual([])
+  })
+
+  it("accepts a display name the slug rules could never allow", () => {
+    expect(validateWerftJson({ ...valid, title: "SruthiScribe Learn" })).toEqual([])
+  })
+
+  it("rejects a present-but-empty title, which would render a blank heading", () => {
+    expect(validateWerftJson({ ...valid, title: "   " })).toContain(
+      "title must be a non-empty string when present",
+    )
+  })
+
+  it("rejects a title too long to be a heading", () => {
+    expect(validateWerftJson({ ...valid, title: "a".repeat(61) })).toContain(
+      "title must be 60 characters or fewer",
+    )
+  })
+
+  it("is written between name and description, so diffs stay stable", () => {
+    const rendered = renderWerftJson({ ...valid, title: "Werft Template" })
+    expect(Object.keys(JSON.parse(rendered))).toEqual([
+      "name",
+      "title",
+      "description",
+      "stack",
+      "url",
+      "tags",
+      "status",
+      "private",
+    ])
+  })
+
+  it("omits the key entirely when there is no title", () => {
+    expect(JSON.parse(renderWerftJson(valid))).not.toHaveProperty("title")
+  })
+})
