@@ -73,12 +73,19 @@ export async function fetchFleet(registryBase: string, token: string): Promise<F
 }
 
 /**
- * Sets one environment variable on a Vercel project, for both targets.
+ * Sets one environment variable on a Vercel project, for both targets — and
+ * leaves exactly one entry behind.
  *
- * `upsert=true` because this is a rotation: the variable already exists on
- * every app that has ever been signed into, and a plain create would 409.
- * Preview as well as production, so a PR's preview deployment accepts the same
- * password rather than becoming unenterable.
+ * `upsert=true` alone is not enough, which cost a real inconsistency: Vercel
+ * scopes an entry to a set of targets, and upserting production+preview beside
+ * an existing preview-only entry creates a *second* entry rather than merging.
+ * The marketplace ended up holding two WERFT_PASSWORD_HASH values — the new one
+ * for production and a stale one still claiming preview — so a preview
+ * deployment would have accepted the previous password. Silent, and only
+ * visible by listing the variables.
+ *
+ * So every existing entry for the key is removed first. The end state is one
+ * entry covering both targets, whatever the project started with.
  */
 export async function setVercelEnv(
   projectName: string,
@@ -86,11 +93,29 @@ export async function setVercelEnv(
   value: string,
   token: string,
 ): Promise<boolean> {
+  const auth = { Authorization: `Bearer ${token}` }
+
+  const listed = await fetch(`https://api.vercel.com/v9/projects/${projectName}/env`, {
+    headers: auth,
+  }).catch(() => null)
+  if (listed?.ok) {
+    const body = (await listed.json().catch(() => null)) as {
+      envs?: { id?: unknown; key?: unknown }[]
+    } | null
+    for (const entry of body?.envs ?? []) {
+      if (entry.key !== key || typeof entry.id !== "string") continue
+      await fetch(`https://api.vercel.com/v9/projects/${projectName}/env/${entry.id}`, {
+        method: "DELETE",
+        headers: auth,
+      }).catch(() => null)
+    }
+  }
+
   const response = await fetch(
     `https://api.vercel.com/v10/projects/${projectName}/env?upsert=true`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({
         key,
         value,

@@ -139,6 +139,37 @@ describe("refreshFleet", () => {
     expect(outcomes[0]?.outcome).toBe("failed")
   })
 
+  it("deletes existing entries for the key first, so no stale target survives", async () => {
+    // The real failure: upserting production+preview beside an existing
+    // preview-only entry left two, and preview kept the old password.
+    const methods: string[] = []
+    const urls: string[] = []
+    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+      urls.push(String(url))
+      methods.push(init?.method ?? "GET")
+      if (String(url).endsWith("/env") && (init?.method ?? "GET") === "GET") {
+        return new Response(
+          JSON.stringify({
+            envs: [
+              { id: "stale-preview", key: "WERFT_PASSWORD_HASH" },
+              { id: "other-var", key: "DATABASE_URL" },
+            ],
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response("{}", { status: 200 })
+    })
+    const exec = await import("./exec.ts")
+    vi.spyOn(exec, "exec").mockResolvedValue({ code: 0, stdout: "", stderr: "" })
+
+    await refreshFleet(HASH, [apps[0] as FleetApp], "tok", () => {})
+
+    expect(urls.some((u) => u.endsWith("/env/stale-preview"))).toBe(true)
+    // Another variable's entry must survive untouched.
+    expect(urls.some((u) => u.endsWith("/env/other-var"))).toBe(false)
+  })
+
   it("upserts both targets, so a preview deployment accepts the password too", async () => {
     const bodies: string[] = []
     const urls: string[] = []
@@ -151,7 +182,8 @@ describe("refreshFleet", () => {
     vi.spyOn(exec, "exec").mockResolvedValue({ code: 0, stdout: "", stderr: "" })
 
     await refreshFleet(HASH, [apps[0] as FleetApp], "tok", () => {})
-    expect(urls[0]).toContain("upsert=true")
+    // Not urls[0]: existing entries are listed and cleared before the upsert.
+    expect(urls.some((url) => url.includes("upsert=true"))).toBe(true)
     const sent = JSON.parse(bodies[0] ?? "{}")
     expect(sent.target).toEqual(["production", "preview"])
     expect(sent.key).toBe("WERFT_PASSWORD_HASH")
