@@ -175,6 +175,45 @@ Both halves of the done-when are now met on a real app: an issue becomes a revie
 
 **Done when:** every app you own has a row, and stale ones are visibly stale.
 
+**Status — registry live, backfill deliberately incomplete, 2026-08-08.**
+`werft_app` table added to `werft-marketplace`'s own database (the "Neon
+project you already have" — every scaffolded app has one, so the registry
+lives in the one app whose job is to display it, rather than a new shared
+project). `POST /api/registry/upsert` (bearer token) validates and upserts;
+`registry-upsert.yml`, merged into the template, calls it on every merge to
+`main`. `GET /api/registry/health-check` runs nightly via `vercel.json`'s
+`crons`.
+
+**Chose HTTP + a shared bearer token over a shared database credential** —
+recorded in AGENTS.md, not just here: a raw `DATABASE_URL` in every app's CI
+secrets would give every app write access to anything in that table, not
+just its own valid `werft.json`, and would put a write-capable credential to
+one app's production database in every other app's secrets.
+
+**Two real bugs, both found by testing the deployed endpoints, not by
+reading the code:**
+- The session gate's proxy matcher exempted `api/auth` but not
+  `api/registry` — every request 307'd to `/login`, including ones with a
+  correct token, because it never reached the route at all. Every app's CI
+  has no session cookie, so this was a complete, silent failure until it was
+  tested against the real URL.
+- The health-check route failed *open*: `secret && header !== ...` treated
+  a missing `CRON_SECRET` as "no check needed," leaving it reachable by
+  anyone on the internet. Checked Vercel's own documented pattern before
+  shipping the fix — `!secret || header !== ...` — the opposite logic.
+
+Both apps registered themselves for real: `werft-marketplace` and
+`werft-template` both have real rows, `werft-template`'s written by
+`registry-upsert.yml` running on its own merge, not by hand.
+
+**Backfill deliberately not done.** The apps named above (nayoniq, startgrid,
+carnatic-guitar, mnemo, kompass-iota, kompass-chat) have no `werft.json` and
+were never scaffolded from this template — inventing their descriptions,
+stacks, or tags to populate rows would be fabricating data about real
+projects. The mechanism exists (the same endpoint any app calls); populating
+it for these needs either a real `werft.json` written for each, or a
+deliberate one-off entry — both a decision for you, not something to guess.
+
 ---
 
 ## Phase 5 — Marketplace *(weeks 6–8)*
@@ -190,6 +229,39 @@ A Next.js app on Vercel reading `werft_apps`. Deliberately thin.
 **Not in v1:** ratings, comments, analytics, install flows. You are the only user. Their absence costs nothing.
 
 **Why it earns its place.** Not discovery — you already know what you built. It's the anti-decay function: a wall of apps with health dots makes abandonment visible, which is the thing that actually kills personal project portfolios.
+
+**Status — built and verified live, Cloudflare Access excluded, 2026-08-08.**
+Home page: search, tag-filter pills, a card grid (health dot, stack badges,
+a Launch button, or "Not deployed yet" when there's no URL). Detail page at
+`/apps/[name]`: every field in plain language — `status` and `health` render
+as full sentences ("Prototype — early, may change a lot"), not raw enum
+values. Two distinct empty states: zero apps at all gets scaffold
+instructions, zero apps matching the current filter gets a specific message
+with a one-click "Clear filters."
+
+Not just built — actually looked at, in a real browser, signed in as the
+real operator (the browser session from earlier in this work still held):
+confirmed the grid renders real data for both registered apps, tag filtering
+narrows correctly, the detail page's plain-language labels render as
+designed, and the empty-filter state shows the right message with a working
+clear action. Added a `success` colour to `@werft/tokens` for the third
+health state — `accent` and `danger` already meant something else, and health
+dots need three colours for three real states (healthy/unhealthy/unknown).
+
+**Screenshot / repo link:** repo link works (`repoUrl`, derived from the app
+name — every scaffolded app's GitHub repo is named identically to the app, so
+it doesn't need its own field in `werft.json`). Screenshot is not built —
+capturing and storing one is a real, separate feature (needs somewhere to put
+the image, and something to trigger the capture), not something to fold in
+silently.
+
+**Private apps behind Cloudflare Access: not done, and not attempted.**
+Checked for existing Cloudflare credentials before ruling this out —
+`wrangler whoami` unauthenticated, no `CLOUDFLARE_*` env vars, no config
+files anywhere on this machine. Configuring Access for a domain requires a
+Cloudflare account and zone access this session does not have and cannot
+obtain — same category as the GitHub App install in Phase 3, a real
+blocker, not a corner cut.
 
 ---
 
