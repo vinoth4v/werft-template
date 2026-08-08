@@ -32,6 +32,15 @@ pnpm create-app --help            # scaffold a new app from this template
   straight through. The gateway owns lane selection, quota, and cooldown. Never
   reimplement any of that client-side.
 
+  **How an app actually calls one:** `apps/web/src/kompass.ts`, which is part
+  of the harness rather than something each app reinvents. `askOnce("…")` for
+  one question, `ask([…])` for a conversation. The default lane is
+  `kompass-agentic`; pass `{ lane: "kompass-fast" }` for short latency-sensitive
+  calls or `"kompass-hard"` for the rare request worth waiting on. It reads
+  `KOMPASS_BASE_URL` and `KOMPASS_TOKEN` lazily, so importing it cannot break a
+  build, and it is server-side only — a route handler or server action calls it,
+  never a component, because the token must never reach a browser.
+
   **CI is the exception, deliberately.** `@claude` authenticates with the
   operator's own Claude subscription (`CLAUDE_CODE_OAUTH_TOKEN`, from
   `claude setup-token`) and talks to Anthropic directly — no
