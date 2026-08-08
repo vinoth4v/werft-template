@@ -4,7 +4,16 @@ name: Claude Code
 # runner. It opens or updates a pull request; it never merges one — that stays
 # a human action, always. See AGENTS.md's Phase 3 guardrails.
 #
-# All model calls route through Kompass (ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN
+# Model calls go to Anthropic as the operator, using their Claude subscription
+# (ANTHROPIC_BASE_URL is deliberately absent — setting it is what sent every
+# token to Kompass instead). Kompass remains wired into claude-escalate.yml as
+# the manual escape hatch when the subscription is exhausted.
+#
+# Historical note, since the old comment said the opposite: everything here
+# routed through Kompass until the operator asked for their subscription. App
+# *code* still may never call a provider SDK; that rule is about the running
+# app, and this is CI acting as the operator.
+# (was: all model calls route through Kompass — ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN
 # below), never Anthropic's API directly — same rule as everywhere else in this
 # repo. anthropic_api_key is passed only because the action refuses to start
 # without something in that input; the real credential is ANTHROPIC_AUTH_TOKEN.
@@ -34,12 +43,20 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - uses: anthropics/claude-code-action@v1
+      # Fails here, with the fix, rather than letting the action fail on an
+      # empty credential — which reads as a model error and sends you hunting
+      # in the wrong place.
+      - name: Require the subscription token
         env:
-          ANTHROPIC_BASE_URL: https://kompass.vinoth4v.workers.dev
-          ANTHROPIC_AUTH_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set on this repository. Run 'claude setup-token' locally, then: gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo ${{ github.repository }}"
+            exit 1
+          fi
+      - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.KOMPASS_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Without this, the action's default tag-mode toolset applies: read,
           # comment, and git — but no Write and no Edit. Claude would read the
           # request, post "building…", and have literally no way to create a

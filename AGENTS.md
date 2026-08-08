@@ -24,13 +24,23 @@ pnpm create-app --help            # scaffold a new app from this template
 
 - **Never end work on a red build.** `pnpm build` exits 0 or the change is not
   finished. Do not report success from reading the code; report the exit code.
-- **Never call a model provider directly.** No `@anthropic-ai/*`, `openai`,
-  `@google/*`, or any provider SDK — not in this template, not in an app built
-  from it. Model access goes through the Kompass gateway: base URL plus bearer
-  token, and the model name is an alias string (`kompass`, `kompass-fast`,
-  `kompass-hard`, or blank to let the gateway route) passed straight through.
-  The gateway owns lane selection, quota, and cooldown. Never reimplement any of
-  that client-side.
+- **Never call a model provider directly from app code.** No `@anthropic-ai/*`,
+  `openai`, `@google/*`, or any provider SDK — not in this template, not in an
+  app built from it. A running app reaches models through the Kompass gateway:
+  base URL plus bearer token, and the model name is an alias string (`kompass`,
+  `kompass-fast`, `kompass-hard`, or blank to let the gateway route) passed
+  straight through. The gateway owns lane selection, quota, and cooldown. Never
+  reimplement any of that client-side.
+
+  **CI is the exception, deliberately.** `@claude` authenticates with the
+  operator's own Claude subscription (`CLAUDE_CODE_OAUTH_TOKEN`, from
+  `claude setup-token`) and talks to Anthropic directly — no
+  `ANTHROPIC_BASE_URL`, because setting it is precisely what routes to Kompass.
+  A build plan is worth the strongest model available; a running app's features
+  are not, and would put a personal subscription behind a public URL. The
+  subscription has a hard limit and no fallback chain, so when it is exhausted a
+  run fails and waits: `claude-escalate.yml` is the manual way back onto the
+  gateway.
 - **Never edit a migration that has been applied.** Migrations are append-only.
   Fix forward with a new one.
 - **Never read secrets at module scope.** Environment access is lazy so that
