@@ -1,0 +1,119 @@
+name: Scaffold app
+
+# The marketplace's "create an app" button, made real: its /new form dispatches
+# this workflow, which runs the same create-werft-app the terminal does — one
+# scaffold implementation, two front doors. Runs here in werft-template
+# because this repo owns the scaffold code and the shared credentials; the
+# marketplace only needs permission to dispatch, never the credentials
+# themselves.
+#
+# Deliberately NO password input: workflow_dispatch inputs are visible in the
+# run's summary to anyone who can read the repo, and this repo is public. The
+# app comes up without a sign-in configured; the operator sets it afterwards
+# with `pnpm hash-password` — the run's notes say exactly that.
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "App name — becomes the repo, database, Vercel project and URL"
+        required: true
+        type: string
+      description:
+        description: "One line for the registry card"
+        required: true
+        type: string
+      email:
+        description: "Operator email — the only address that can sign in"
+        required: true
+        type: string
+      tags:
+        description: "Comma-separated registry tags"
+        required: false
+        type: string
+        default: ""
+      visibility:
+        description: "Repository visibility"
+        required: true
+        type: choice
+        options: [public, private]
+        default: public
+      status:
+        description: "Registry status"
+        required: true
+        type: choice
+        options: [prototype, active, paused, archived]
+        default: prototype
+      deploy:
+        description: "Deploy to production at the end"
+        required: false
+        type: boolean
+        default: true
+      vercel_sso:
+        description: "Put Vercel SSO in front of the whole deployment"
+        required: false
+        type: boolean
+        default: false
+      first_task:
+        description: "Optional first task — filed as an @claude issue in the new repo, so Claude Code starts building immediately"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # gh CLI reads GH_TOKEN; needs a token that can create repos, which the
+      # workflow's own GITHUB_TOKEN cannot (it is scoped to this repo only).
+      GH_TOKEN: ${{ secrets.GH_SCAFFOLD_TOKEN }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      # The Vercel CLI and the scaffold's API calls both read this env var.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # Shared secrets the scaffold copies into the new app's own repo —
+      # resolveSharedSecret reads the environment first, so no ~/.config
+      # is needed on a runner.
+      WERFT_REGISTRY_TOKEN: ${{ secrets.WERFT_REGISTRY_TOKEN }}
+      KOMPASS_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install the Vercel CLI
+        run: npm install -g vercel@58
+      - name: Configure git identity
+        run: |
+          git config --global user.email "werft-scaffold[bot]@users.noreply.github.com"
+          git config --global user.name "werft-scaffold[bot]"
+      - name: Run create-werft-app
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          APP_DESCRIPTION: ${{ inputs.description }}
+          APP_EMAIL: ${{ inputs.email }}
+          APP_TAGS: ${{ inputs.tags }}
+          APP_STATUS: ${{ inputs.status }}
+        run: |
+          set -euo pipefail
+          FLAGS=(--name "$APP_NAME" --description "$APP_DESCRIPTION" --email "$APP_EMAIL" \
+                 --status "$APP_STATUS" --dir "$RUNNER_TEMP/$APP_NAME" --yes)
+          [ -n "$APP_TAGS" ] && FLAGS+=(--tags "$APP_TAGS")
+          [ "${{ inputs.visibility }}" = "public" ] && FLAGS+=(--public) || FLAGS+=(--private)
+          [ "${{ inputs.deploy }}" = "false" ] && FLAGS+=(--no-deploy)
+          [ "${{ inputs.vercel_sso }}" = "true" ] && FLAGS+=(--vercel-sso)
+          node --experimental-strip-types packages/create-werft-app/src/cli.ts "${FLAGS[@]}"
+      - name: File the first task as an @claude issue
+        if: ${{ inputs.first_task != '' }}
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          FIRST_TASK: ${{ inputs.first_task }}
+        run: |
+          OWNER=$(gh api user -q .login)
+          gh issue create --repo "$OWNER/$APP_NAME" \
+            --title "First task" \
+            --body "@claude $FIRST_TASK
+
+          (Filed automatically by the Werft marketplace's create-app form. Review the branch Claude pushes before merging.)"

@@ -24,7 +24,7 @@ const CLI_AUTH_PATHS = [
   ["AppData", "Roaming", "com.vercel.cli", "auth.json"], // Windows
 ]
 
-export type TokenSource = "vercel CLI" | "VERCEL_TOKEN"
+export type TokenSource = "~/.config/werft/vercel-token" | "VERCEL_TOKEN" | "vercel CLI"
 
 export type VercelToken = {
   token: string
@@ -37,10 +37,27 @@ export type LinkedProject = {
 }
 
 /**
- * Prefers the CLI's own credential, so a normal `vercel login` is all the
- * operator needs, and falls back to VERCEL_TOKEN when it is absent or expired.
+ * Durable credentials first, the CLI's own last.
+ *
+ * The order is a lesson paid for in a real outage: the CLI's auth.json token
+ * rotates roughly daily (expiresAt ~24h out), and a VERCEL_TOKEN repo secret
+ * copied from it went invalid the same afternoon — every CI job that needed
+ * Vercel started 403ing with invalidToken. A long-lived access token minted
+ * at vercel.com/account/tokens and kept in ~/.config/werft/vercel-token
+ * doesn't rot; VERCEL_TOKEN in the environment is how CI runners inject
+ * theirs; the CLI credential remains the zero-setup fallback for interactive
+ * use, where daily rotation doesn't matter.
  */
-export async function resolveVercelToken(now: number = Date.now()): Promise<VercelToken | null> {
+export async function resolveVercelToken(
+  now: number = Date.now(),
+  durableTokenPath: string = join(homedir(), ".config", "werft", "vercel-token"),
+): Promise<VercelToken | null> {
+  const durable = (await readFile(durableTokenPath, "utf8").catch(() => "")).trim()
+  if (durable !== "") return { token: durable, source: "~/.config/werft/vercel-token" }
+
+  const fromEnv = process.env.VERCEL_TOKEN
+  if (fromEnv) return { token: fromEnv, source: "VERCEL_TOKEN" }
+
   for (const segments of CLI_AUTH_PATHS) {
     const path = join(homedir(), ...segments)
     let parsed: { token?: unknown; expiresAt?: unknown }
@@ -57,8 +74,7 @@ export async function resolveVercelToken(now: number = Date.now()): Promise<Verc
     }
   }
 
-  const fromEnv = process.env.VERCEL_TOKEN
-  return fromEnv ? { token: fromEnv, source: "VERCEL_TOKEN" } : null
+  return null
 }
 
 /**

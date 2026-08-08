@@ -148,6 +148,36 @@ describe("normaliseExpiry", () => {
   })
 })
 
+describe("resolveVercelToken", () => {
+  it("prefers the durable operator token over everything", async () => {
+    // The order is the fix for a real outage: a secret copied from the CLI's
+    // rotating credential died the same afternoon. Durable file wins.
+    const dir = await mkdtemp(join(tmpdir(), "werft-vtok-"))
+    const durablePath = join(dir, "vercel-token")
+    await writeFile(durablePath, "durable-long-lived-token\n")
+
+    const { resolveVercelToken } = await import("./vercel.ts")
+    const resolved = await resolveVercelToken(Date.now(), durablePath)
+
+    expect(resolved).toEqual({
+      token: "durable-long-lived-token",
+      source: "~/.config/werft/vercel-token",
+    })
+  })
+
+  it("falls past a missing durable file without failing", async () => {
+    const { resolveVercelToken } = await import("./vercel.ts")
+    const resolved = await resolveVercelToken(
+      Date.now(),
+      join(tmpdir(), "definitely-absent", "vercel-token"),
+    )
+
+    // Whatever it found next (env or the machine's real CLI auth), the point
+    // is it kept looking rather than returning null on ENOENT.
+    expect(resolved === null || resolved.source !== "~/.config/werft/vercel-token").toBe(true)
+  })
+})
+
 describe("readLinkedProject", () => {
   it("reads the projectId and orgId vercel link wrote", async () => {
     const dir = await mkdtemp(join(tmpdir(), "werft-link-"))
