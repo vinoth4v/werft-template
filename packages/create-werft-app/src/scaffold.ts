@@ -620,6 +620,9 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // from the environment or ~/.config/werft/, never invented.
     for (const [secretName, fileName] of [
       ["WERFT_REGISTRY_TOKEN", "registry-token"],
+      // @claude runs on the operator's Claude subscription; KOMPASS_TOKEN is
+      // still armed because claude-escalate.yml falls back to the gateway.
+      ["CLAUDE_CODE_OAUTH_TOKEN", "claude-oauth-token"],
       ["KOMPASS_TOKEN", "kompass-token"],
     ] as const) {
       const value = await resolveSharedSecret(secretName, fileName)
