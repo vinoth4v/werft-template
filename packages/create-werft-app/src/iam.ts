@@ -128,29 +128,52 @@ export async function createAppAwsUser(
 }
 
 /**
- * Full teardown, in the order IAM requires: the access key and inline policy
- * must go before the user itself. Best-effort per step so a partial mint still
- * unwinds. Returns true only if the user delete succeeded.
+ * Every access key the user currently has.
+ *
+ * Teardown used to be handed the one key id it had just minted, which is fine
+ * on the rollback path and wrong everywhere else: a user retired later may have
+ * keys nobody remembers, and IAM refuses to delete a user that still has any.
+ * Proven the hard way — a teardown call missing the key id reported failure and
+ * left the user behind.
+ */
+export async function listAccessKeys(userName: string, creds: AwsCredentials): Promise<string[]> {
+  const xml = await iamCall({ Action: "ListAccessKeys", UserName: userName }, creds).catch(() => "")
+  return [...xml.matchAll(/<AccessKeyId>([^<]+)<\/AccessKeyId>/g)].map((match) => match[1] ?? "")
+}
+
+/**
+ * Full teardown, in the order IAM requires: access keys and the inline policy
+ * must go before the user itself.
+ *
+ * Discovers the keys rather than trusting the caller to name them — pass one if
+ * you have it, and it is still deleted, but the list is what makes the delete
+ * actually succeed. Returns true only when the user is provably gone: a
+ * NoSuchEntity on the final delete counts, since the goal is "no such user".
  */
 export async function deleteAppAwsUser(
   userName: string,
   accessKeyId: string,
   creds: AwsCredentials,
 ): Promise<boolean> {
+  const keys = new Set(await listAccessKeys(userName, creds))
+  if (accessKeyId) keys.add(accessKeyId)
+
+  for (const key of keys) {
+    await iamCall({ Action: "DeleteAccessKey", UserName: userName, AccessKeyId: key }, creds).catch(
+      () => {},
+    )
+  }
+
+  await iamCall(
+    { Action: "DeleteUserPolicy", UserName: userName, PolicyName: "werft-bucket-access" },
+    creds,
+  ).catch(() => {})
+
   try {
-    if (accessKeyId) {
-      await iamCall(
-        { Action: "DeleteAccessKey", UserName: userName, AccessKeyId: accessKeyId },
-        creds,
-      ).catch(() => {})
-    }
-    await iamCall(
-      { Action: "DeleteUserPolicy", UserName: userName, PolicyName: "werft-bucket-access" },
-      creds,
-    ).catch(() => {})
     await iamCall({ Action: "DeleteUser", UserName: userName }, creds)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    // Already absent is the outcome we wanted.
+    return String(error).includes("NoSuchEntity")
   }
 }

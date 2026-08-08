@@ -282,3 +282,26 @@ export async function getProjectSettings(
       typeof body?.serverlessFunctionRegion === "string" ? body.serverlessFunctionRegion : null,
   }
 }
+
+/**
+ * Deletes a Vercel project, and with it every deployment and environment
+ * variable it held.
+ *
+ * Addressed by name rather than id, for the same reason as the Neon lookup:
+ * retirement begins with the app's name. Vercel accepts either.
+ *
+ * 404 counts as success — the goal is that the project is gone.
+ */
+export async function deleteVercelProject(
+  projectName: string,
+  token: string,
+  orgId?: string,
+): Promise<boolean> {
+  const query = orgId && orgId.startsWith("team_") ? `?teamId=${encodeURIComponent(orgId)}` : ""
+  const response = await fetch(`${VERCEL_API}/v9/projects/${projectName}${query}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => null)
+  if (!response) return false
+  return response.ok || response.status === 404
+}

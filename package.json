@@ -18,7 +18,8 @@
     "db:migrate": "pnpm --filter web run db:migrate",
     "hash-password": "node --experimental-strip-types apps/web/scripts/hash-password.ts",
     "create-app": "node --experimental-strip-types packages/create-werft-app/src/cli.ts",
-    "werft-password": "node --experimental-strip-types packages/create-werft-app/src/password-cli.ts"
+    "werft-password": "node --experimental-strip-types packages/create-werft-app/src/password-cli.ts",
+    "retire-app": "node --experimental-strip-types packages/create-werft-app/src/retire-cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
