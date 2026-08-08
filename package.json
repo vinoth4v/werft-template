@@ -17,7 +17,8 @@
     "db:generate": "pnpm --filter web run db:generate",
     "db:migrate": "pnpm --filter web run db:migrate",
     "hash-password": "node --experimental-strip-types apps/web/scripts/hash-password.ts",
-    "create-app": "node --experimental-strip-types packages/create-werft-app/src/cli.ts"
+    "create-app": "node --experimental-strip-types packages/create-werft-app/src/cli.ts",
+    "werft-password": "node --experimental-strip-types packages/create-werft-app/src/password-cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
