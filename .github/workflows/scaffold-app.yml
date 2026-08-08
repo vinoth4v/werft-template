@@ -75,8 +75,8 @@ on:
         type: choice
         options: [werft, madras, deck, nordlicht, tinte, kimi-earth, kimi-cocoa, kimi-editorial, kimi-terminal]
         default: werft
-      first_task:
-        description: "Optional first task — filed as an @claude issue in the new repo, so Claude Code starts building immediately"
+      build_plan:
+        description: "Build plan — filed as an @claude issue so Claude Code starts building immediately. Paste the whole plan; markdown is fine"
         required: false
         type: string
         default: ""
@@ -95,6 +95,9 @@ jobs:
       # The admin AWS key lives here, once, and never in a scaffolded app:
       # --with-s3 uses it to mint each app its own bucket-scoped IAM user.
       # Absent is fine — the scaffold only reads it when --with-s3 is passed.
+      # The operator's standing password hash — never a password. Without it
+      # every app created here ships with no way to sign in.
+      WERFT_PASSWORD_HASH: ${{ secrets.WERFT_PASSWORD_HASH }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       # Shared secrets the scaffold copies into the new app's own repo —
@@ -149,15 +152,81 @@ jobs:
           [ "${{ inputs.vercel_sso }}" = "true" ] && FLAGS+=(--vercel-sso)
           [ "${{ inputs.with_s3 }}" = "true" ] && FLAGS+=(--with-s3)
           node --experimental-strip-types packages/create-werft-app/src/cli.ts "${FLAGS[@]}"
-      - name: File the first task as an @claude issue
-        if: ${{ inputs.first_task != '' }}
+      - name: File the build plan as an @claude issue
+        if: ${{ inputs.build_plan != '' }}
         env:
           APP_NAME: ${{ inputs.app_name }}
-          FIRST_TASK: ${{ inputs.first_task }}
+          BUILD_PLAN: ${{ inputs.build_plan }}
         run: |
+          set -euo pipefail
           OWNER=$(gh api user -q .login)
+          # Written via a file, not an inline argument: a real build plan is
+          # multi-line markdown, and interpolating it into a shell string
+          # mangles backticks, quotes and newlines.
+          {
+            printf '@claude Build this app according to the plan below.\n\n'
+            printf '%s\n' "$BUILD_PLAN"
+            printf '\n---\n'
+            printf 'Filed automatically by the Werft create-app form. Work on a branch and open a pull request; a human merges.\n'
+          } > /tmp/plan.md
           gh issue create --repo "$OWNER/$APP_NAME" \
-            --title "First task" \
-            --body "@claude $FIRST_TASK
+            --title "Build plan" --body-file /tmp/plan.md
 
-          (Filed automatically by the Werft marketplace's create-app form. Review the branch Claude pushes before merging.)"
+      # ---- tell the operator, without inventing a mail service --------------
+      # An assigned GitHub issue is the one notification channel already wired
+      # to a real inbox: GitHub emails the assignee. No new secret, no new
+      # dependency, and it lands in the app's own repo where the work is.
+      #
+      # It reports what it verified, not that it finished: the URL is polled
+      # until it answers, and a login page (302 or 200) is the proof the gate
+      # is up rather than a blank deployment.
+      - name: Confirm the app is live, and say so
+        if: success()
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          HAD_PLAN: ${{ inputs.build_plan != '' }}
+          DEPLOYED: ${{ inputs.deploy }}
+        run: |
+          set -euo pipefail
+          OWNER=$(gh api user -q .login)
+          SLUG="$OWNER/$APP_NAME"
+
+          if [ "$DEPLOYED" = "false" ]; then
+            echo "not deployed by request — no liveness check to run"
+            exit 0
+          fi
+
+          # The scaffold records the real URL in werft.json on the new repo.
+          URL=$(gh api "repos/$SLUG/contents/werft.json" --jq .content \
+                | base64 -d | python3 -c 'import json,sys; print(json.load(sys.stdin).get("url",""))')
+          if [ -z "$URL" ]; then
+            echo "no URL recorded — skipping the liveness check"
+            exit 0
+          fi
+
+          STATUS="did not answer"
+          for _ in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)
+            case "$CODE" in
+              200|302|307) STATUS="answered HTTP $CODE"; break ;;
+            esac
+            sleep 15
+          done
+
+          {
+            printf '## %s is live\n\n' "$APP_NAME"
+            printf -- '- **URL:** %s (%s)\n' "$URL" "$STATUS"
+            printf -- '- **Sign in:** your standing operator email and password\n'
+            printf -- '- **Repo:** https://github.com/%s\n' "$SLUG"
+            printf -- '- **On the wall:** https://werft-marketplace.vercel.app/apps/%s\n\n' "$APP_NAME"
+            if [ "$HAD_PLAN" = "true" ]; then
+              printf 'Claude Code has the build plan and is working on a branch. It opens a pull\n'
+              printf 'request; you merge it. Watch the Pull requests tab.\n'
+            else
+              printf 'No build plan was given, so this is the bare template. Comment `@claude`\n'
+              printf 'with what you want built.\n'
+            fi
+          } > /tmp/live.md
+
+          gh issue create --repo "$SLUG" --title "$APP_NAME is live" \
+            --body-file /tmp/live.md --assignee "$OWNER"
