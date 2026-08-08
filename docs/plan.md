@@ -206,13 +206,33 @@ Both apps registered themselves for real: `werft-marketplace` and
 `werft-template` both have real rows, `werft-template`'s written by
 `registry-upsert.yml` running on its own merge, not by hand.
 
-**Backfill deliberately not done.** The apps named above (nayoniq, startgrid,
-carnatic-guitar, mnemo, kompass-iota, kompass-chat) have no `werft.json` and
-were never scaffolded from this template — inventing their descriptions,
-stacks, or tags to populate rows would be fabricating data about real
-projects. The mechanism exists (the same endpoint any app calls); populating
-it for these needs either a real `werft.json` written for each, or a
-deliberate one-off entry — both a decision for you, not something to guess.
+**Backfill — decided, 2026-08-08.** Re-checked the six named apps directly
+rather than trusting an earlier, truncated `gh repo list`: `nayoniq`,
+`startgrid`, and `carnatic-guitar` are real repos (the first pass missed them
+— worth remembering `--limit` truncates); `mnemo` and `kompass-iota` are not
+— `gh repo view` returns "Could not resolve to a Repository" for both, so
+they were never created under this account, or under a different name.
+`kompass-chat` was already real and well-documented.
+
+Backfilled four: `kompass-chat` with its real GitHub description; the other
+three had never had a description written anywhere — their READMEs are
+unmodified `create-next-app`/Vite boilerplate — so rather than invent one,
+each got an explicitly-labeled placeholder ("Pre-Werft app — no description
+was ever written for it in the repo.") plus only what could actually be
+verified: primary language from GitHub, hosting from the `*.vercel.app`
+domain itself, visibility from the repo's real setting, `status: paused` from
+push recency (last pushed 6–7 weeks before this was written, no
+`werft.json`-driven activity to reset that clock). Confirmed all three
+`*.vercel.app` URLs are genuinely live (`200`) before recording them. `mnemo`
+and `kompass-iota` are simply not registered — there is nothing real to
+attach a row to.
+
+The `paused` status and the honest placeholder aren't a cosmetic choice —
+they're the anti-decay function actually working: a row that says "no
+description, not touched in seven weeks" is more useful here than a
+polished-sounding guess would have been, and doesn't quietly pass off an
+invention as fact next to rows that really do have real `werft.json` data
+behind them.
 
 ---
 
@@ -255,13 +275,28 @@ capturing and storing one is a real, separate feature (needs somewhere to put
 the image, and something to trigger the capture), not something to fold in
 silently.
 
-**Private apps behind Cloudflare Access: not done, and not attempted.**
-Checked for existing Cloudflare credentials before ruling this out —
-`wrangler whoami` unauthenticated, no `CLOUDFLARE_*` env vars, no config
-files anywhere on this machine. Configuring Access for a domain requires a
-Cloudflare account and zone access this session does not have and cannot
-obtain — same category as the GitHub App install in Phase 3, a real
-blocker, not a corner cut.
+**Private apps behind Cloudflare Access — decided, 2026-08-08: deferred, not
+faked.** Re-checked for Cloudflare credentials before deciding anything —
+still none (`wrangler whoami` unauthenticated, no `CLOUDFLARE_*` env vars, no
+config files anywhere on this machine). Configuring Access requires a
+Cloudflare account and zone this session cannot obtain; no API or CLI path
+exists around that requirement, same as Phase 3's GitHub App install.
+
+The decision: **every app's own NextAuth single-user gate is the real
+protection until Cloudflare is configured** — not a fallback pretending to
+be Cloudflare, the actual thing Phase 1 built and Part 0 proved works end to
+end (real programmatic sign-in, real session cookie, real rejection of a
+wrong password). "Private" in the registry (`nayoniq`'s row, for one) means
+exactly what it says — a visibility flag reflecting the repo's own setting —
+and the UI never claims Cloudflare protection anywhere; the detail page
+labels it "Visibility: Private," nothing more. Adding a second network-layer
+gate is real, additive security worth doing later, not a currently-missing
+piece of what "private" means today.
+
+**When Cloudflare access exists:** the mechanism to add is Access policies on
+each private app's own custom domain (not the `*.vercel.app` default, which
+Cloudflare can't front) — a manual decision per app, not something to
+automate blindly, since it changes how you reach your own apps.
 
 ---
 
