@@ -154,5 +154,14 @@ Commits from the App trigger `pr-checks.yml` normally — unlike the default
 `GITHUB_TOKEN`, whose commits GitHub deliberately does not re-trigger
 workflows on. A PR this opens gets real gate feedback with no extra wiring.
 
+**Escalation** (`claude-escalate.yml`, manual `workflow_dispatch`, per your
+plan's ladder — gates stay red twice, pin a stronger model): pushes to a new
+`claude-escalate-pr<n>-<run>` branch, never to the PR's own branch directly,
+and never opens a PR of its own. Modeled on Anthropic's own
+`ci-failure-auto-fix.yml` example — the action has no branch-management logic
+of its own; the workflow checks out and creates the branch itself, and Claude
+commits and pushes using ordinary git commands, which is why `claude_args`
+explicitly allowlists `Bash(git:*)`.
+
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.
