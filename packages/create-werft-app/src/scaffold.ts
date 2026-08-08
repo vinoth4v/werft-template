@@ -470,41 +470,17 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       }
     }
 
-    // ---- 11. optional deploy --------------------------------------------
-    if (options.deploy) {
-      currentStep = "deploy"
-      log.step("Deploying to production")
-      const deployed = await runner.remote("vercel", ["deploy", "--prod", "--yes"], { cwd: dir })
-      // The stable alias, not the URL of this one deployment — Vercel
-      // deployments are immutable, so recording a specific one goes stale the
-      // moment the next deploy happens. extractDeployUrl still runs, only to
-      // confirm the deploy actually printed something rather than silently
-      // producing nothing.
-      const thisDeployment = extractDeployUrl(deployed.stdout)
-      if (thisDeployment === "" && !runner.isDryRun) {
-        notes.push("the deploy produced no URL — something may be wrong; check `vercel ls`")
-      }
-      url = runner.isDryRun ? "" : stableAliasUrl(name)
-    } else {
-      notes.push("not deployed — run `vercel deploy --prod` when ready, then set werft.json url")
-    }
-
-    // ---- 12. record the URL ---------------------------------------------
-    if (url !== "" && !runner.isDryRun) {
-      currentStep = "record the deployment URL"
-      log.step("Recording the URL in werft.json")
-      await writeFile(join(dir, "werft.json"), renderWerftJson({ ...app, url }), "utf8")
-      await runner.local("git", ["add", "werft.json"], { cwd: dir })
-      await runner.local("git", ["commit", "-q", "-m", "Record deployment URL"], { cwd: dir })
-      await runner.local("git", ["push", "-q"], { cwd: dir })
-    }
-
-    // ---- 13. arm the CI pipeline ------------------------------------------
+    // ---- 11. arm the CI pipeline ------------------------------------------
     // The workflows this app inherited (pr-checks, pr-cleanup, reap, registry
     // upsert, claude) are dead without their secrets. Every value is in hand
     // right now — setting them here is what makes "one command gives you a
     // deployed app" include a pipeline that actually runs, instead of a repo
     // whose CI fails on its first PR until someone wires it by hand.
+    //
+    // Before the record-URL push, not after: that push triggers
+    // registry-upsert.yml, and a real run proved the race — the workflow
+    // started at 14:32:34 while WERFT_REGISTRY_TOKEN landed at 14:32:36, so
+    // it skipped "gracefully" and the app silently never self-registered.
     currentStep = "set repository CI secrets"
     log.step("Setting the repository's CI secrets")
     const ciSecrets: Record<string, string> = {
@@ -545,9 +521,41 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       await runner.remote("gh", ["secret", "set", secretName, "--repo", slug], { input: value })
     }
 
+    // ---- 12. optional deploy --------------------------------------------
+    if (options.deploy) {
+      currentStep = "deploy"
+      log.step("Deploying to production")
+      const deployed = await runner.remote("vercel", ["deploy", "--prod", "--yes"], { cwd: dir })
+      // The stable alias, not the URL of this one deployment — Vercel
+      // deployments are immutable, so recording a specific one goes stale the
+      // moment the next deploy happens. extractDeployUrl still runs, only to
+      // confirm the deploy actually printed something rather than silently
+      // producing nothing.
+      const thisDeployment = extractDeployUrl(deployed.stdout)
+      if (thisDeployment === "" && !runner.isDryRun) {
+        notes.push("the deploy produced no URL — something may be wrong; check `vercel ls`")
+      }
+      url = runner.isDryRun ? "" : stableAliasUrl(name)
+    } else {
+      notes.push("not deployed — run `vercel deploy --prod` when ready, then set werft.json url")
+    }
+
+    // ---- 13. record the URL ---------------------------------------------
+    // With the secrets already set above, the push this makes triggers a
+    // registry-upsert.yml run that actually has its token — the app registers
+    // itself with its real URL on its own first merge, no manual step.
+    if (url !== "" && !runner.isDryRun) {
+      currentStep = "record the deployment URL"
+      log.step("Recording the URL in werft.json")
+      await writeFile(join(dir, "werft.json"), renderWerftJson({ ...app, url }), "utf8")
+      await runner.local("git", ["add", "werft.json"], { cwd: dir })
+      await runner.local("git", ["commit", "-q", "-m", "Record deployment URL"], { cwd: dir })
+      await runner.local("git", ["push", "-q"], { cwd: dir })
+    }
+
     // ---- 14. protect main, last -------------------------------------------
     // Last on purpose: required status checks reject direct pushes to main
-    // (GH006) even from the repo owner, and step 12 pushes to main. Public
+    // (GH006) even from the repo owner, and step 13 pushes to main. Public
     // repos only — GitHub Free rejects this API on private repos outright.
     currentStep = "protect main"
     if (options.private) {
