@@ -50,6 +50,24 @@ pnpm create-app --help            # scaffold a new app from this template
   subscription has a hard limit and no fallback chain, so when it is exhausted a
   run fails and waits: `claude-escalate.yml` is the manual way back onto the
   gateway.
+- **Never end a build session without writing down what you did and why.**
+  Two documents, and the split matters: `docs/ARCHITECTURE.md` describes the
+  app as it is *now* — purpose, domain model, data model, surfaces, external
+  services, decisions in force, known gaps — and is rewritten as the design
+  changes. `docs/SESSIONS.md` is append-only history: one entry per session
+  saying what was asked, what changed, what was decided and *why*, what was
+  rejected, and what is still open. Never edit an existing entry, for the same
+  reason migrations are append-only.
+
+  The diff already survives in git; the argument does not. An agent picking this
+  app up in six months can read the code perfectly well and still have no idea
+  which approaches were tried and abandoned, which is how work gets redone and
+  decisions get silently reversed. The headings are fixed so a reader — human or
+  agent — can find the data model without reading the prose, and so two sessions
+  do not invent two structures.
+
+  A pull request that changes behaviour and updates neither document is
+  incomplete, and `docs` in the PR checks says so.
 - **Never edit a migration that has been applied.** Migrations are append-only.
   Fix forward with a new one.
 - **Never read secrets at module scope.** Environment access is lazy so that

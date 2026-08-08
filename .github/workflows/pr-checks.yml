@@ -63,6 +63,47 @@ jobs:
       # self-report success here — this is the check that decides.
       - run: pnpm -r build
 
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # A change to behaviour that documents nothing is the failure this
+      # catches: the diff survives in git, the reasoning does not, and six
+      # months later nobody knows which approaches were already tried.
+      #
+      # Only source counts as behaviour. A PR touching a workflow, a lockfile or
+      # the docs themselves is not asked to explain itself, and neither is a
+      # test-only change.
+      - name: Require a documented change
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
+          echo "changed:"; echo "$CHANGED" | sed 's/^/  /'
+
+          SOURCE=$(echo "$CHANGED" | grep -E '^apps/web/src/|^packages/[^/]+/src/' | grep -v '\.test\.' || true)
+          if [ -z "$SOURCE" ]; then
+            echo "no source changes — nothing to document"
+            exit 0
+          fi
+
+          # Any docs/*.md counts: an app documents itself in ARCHITECTURE.md and
+          # SESSIONS.md, while werft-template keeps its own reasoning in
+          # docs/plan.md. The rule is "write down what you did", not "use these
+          # exact two filenames in every repo that inherits this workflow".
+          if echo "$CHANGED" | grep -qE '^docs/.*\.md$'; then
+            echo "source changed and the docs were updated"
+            exit 0
+          fi
+
+          echo "::error::Source changed but docs/ARCHITECTURE.md and docs/SESSIONS.md did not. Describe the app as it now is in ARCHITECTURE.md, and append what you decided and why to SESSIONS.md. See AGENTS.md."
+          exit 1
+
   neon-preview:
     name: neon-preview-branch
     runs-on: ubuntu-latest
