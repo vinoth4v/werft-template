@@ -156,6 +156,12 @@ env:
 
 **Done when:** you file an issue from your phone and get back a reviewable PR with a working preview URL.
 
+**Status — primary path live and proven, 2026-08-08.** `.github/workflows/claude.yml` and `claude-escalate.yml` are merged into the template. One real deviation from the snippet above, found by checking Anthropic's current docs rather than assuming the snippet was current: `ANTHROPIC_MODEL` isn't a variable Claude Code reads. Model selection is `claude_args: "--model ..."` — used by the escalation workflow; the primary path is left unset (auto-route).
+
+Proven with a real run, not inferred: filed issue #6 on `werft-template`, commented `@claude` with a one-line task, and in 50s it pushed a branch with exactly that change and nothing else. Opened the resulting PR (#7) and confirmed `pr-checks.yml` genuinely re-triggers on commits from the Claude GitHub App — `build`, `typecheck`, `gitleaks` all ran and passed for real, `mergeable: MERGEABLE`. The App's own reply comment did not re-trigger itself, confirming the loop-prevention guardrail works. The action pushes a branch and links a PR rather than opening one automatically — one more human checkpoint than designed for, not fewer.
+
+**Not yet proven:** the escalation workflow (`claude-escalate.yml`) — built and merged, modeled on Anthropic's own `ci-failure-auto-fix.yml` example, but never run. The "done when" above needs a working preview URL in the loop too, which issue #6's trivial README fix didn't require — `neon-preview-branch` fails structurally on this repo's own PRs (no Neon/Vercel project of its own, documented in AGENTS.md), so the full loop including a live preview URL is proven on `werft-marketplace`, not here.
+
 ---
 
 ## Phase 4 — Registry *(weeks 5–6)*
