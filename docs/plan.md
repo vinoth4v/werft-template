@@ -510,6 +510,90 @@ to zero residue.
 
 ---
 
+## The wall learned to speak plainly *(2026-08-08, later)*
+
+The operator's words: *the marketplace description and categories are too
+technical. fix it so its more common.* Correct, and the categories were the
+worse half.
+
+**The categories weren't categories.** The filter bar was built from `tags`,
+and the tags were bookkeeping: `backfilled`, `legacy`, `registry`,
+`personal`. Those record how a row arrived in the database, not what the app
+is — you could filter the wall by "backfilled", which tells a human nothing
+at all. They are now words a person would actually browse by: music, money,
+learning, work, data, video, coding, business, ai, tools — and `unfinished`,
+which is the honest label for one of them.
+
+**Six descriptions were not descriptions.** They literally read "Pre-Werft
+app — no description was ever written for it in the repo." The rest leaned on
+jargon: "Enterprise RDF Knowledge Graph Platform", "Germany-native FI
+tracker", "generation layer fork of nayoniq (internal codename Atlas)". Every
+replacement was read off the app's own live page — its meta description,
+headings and copy — rather than remembered or guessed. `carnatic-guitar`
+turned out to be an untouched Vite starter (default README, a page rendering
+nothing), so it says exactly that and is tagged `unfinished` instead of being
+dressed up.
+
+**Cards led with the tech.** Each one listed `next typescript neon drizzle
+vercel` under a jargon description. Cards now show what the app *is*; the
+stack is still on the app's own page, where someone asking that question
+goes.
+
+**A trap on the way in, worth more than the copy change.** The upsert stamped
+`lastDeployAt: now()` on every write, and the wall *sorts* by it — so
+correcting fifteen descriptions would have claimed fifteen dormant apps
+deployed today and reshuffled the whole wall around an edit that deployed
+nothing. Hand-editing the table to repair that is forbidden, and rightly, so
+the field became optional in the payload instead: CI keeps omitting it (a
+merge to main really does deploy, so "now" is true there) and a metadata-only
+correction sends the app's real date. Proven on one app and verified in the
+database before the other fourteen were touched.
+
+**The marketplace was breaking its own rule.** The registry's law is that a
+row is written by CI from the app's own `werft.json`, never by hand — and the
+one repo that *defines* that law had no `registry-upsert.yml` at all. Its row
+sat frozen at whatever was first inserted, so editing its `werft.json`
+changed nothing on the wall: exactly the drift the rule exists to prevent, in
+the last place anyone would look for it. It now self-registers like every app
+it demands this of, over ordinary HTTP with the shared token.
+
+**Display names.** `name` has to be a GitHub repo, a Neon project, a Vercel
+project and a subdomain simultaneously, so it is a slug by necessity and can
+never read "SruthiScribe Learn". An optional `title` carries the brand for
+display only; nothing resolves by it, and an app that omits it renders
+exactly as before. The detail page keeps the slug in mono under the heading,
+because that page is where the repo/database/project name is the useful fact.
+`--title`, a form field and a workflow input let a new app be branded at
+birth instead of edited afterwards.
+
+**Three things that only showed up by doing it:**
+1. `werft.json`'s validator rejects unknown keys — by design — and it caught
+   `title` instantly by failing on this repo's own file. Both copies of that
+   validator (this repo owns the canonical one; the marketplace carries a
+   duplicate) were widened together and checked byte-identical, because a
+   silent drift between them is a bug that would surface much later and much
+   worse.
+2. The nullable column went into the production database *before* the code
+   that reads it merged. Additive columns are invisible to already-deployed
+   code; deploying code that selects a column the database lacks takes the
+   wall down.
+3. One row still came out untitled, and the reason is a quiet race: the
+   marketplace's CI upsert fired while production still ran the old
+   validator, which **strips** unknown keys rather than rejecting them — so
+   the title vanished with a 200 and no error anywhere. Caught in
+   verification, fixed by replaying exactly what the workflow posts. A
+   schema-widening deploy racing a CI upsert fails silently; only checking
+   the stored result catches it.
+
+Also settled that evening: `stagegrid` and `startgrid` are **not** a
+duplicate, which is what they looked like. Both serve 200, under different
+titles, from different repos with different commit histories — StageGrid is
+an AI assistant for live sound engineers, StartGrid a European
+startup-investor platform. Flagged rather than deleted, then checked; the
+similar names are a coincidence. All 17 rows are real.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
