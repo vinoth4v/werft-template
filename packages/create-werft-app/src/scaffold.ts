@@ -301,7 +301,32 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       }
       envValues.WERFT_PASSWORD_HASH = hash
     } else {
-      notes.push("no password hashed — run `pnpm hash-password` and set WERFT_PASSWORD_HASH")
+      // No --password given: reuse the operator's standing hash, the same way
+      // KOMPASS_TOKEN and WERFT_REGISTRY_TOKEN are reused. Without this every
+      // app created from the marketplace form shipped with no password at all
+      // and could not be signed into — the form deliberately has no password
+      // field, because workflow_dispatch inputs are visible in the run log of
+      // a public repo, and refusing the input without offering another path
+      // left the app locked.
+      //
+      // It is the hash that travels, never a password: the same value the app
+      // stores in its own environment. One hash across the fleet is the
+      // operator's explicit choice — one standing credential for every app —
+      // and the tradeoff is that it is only as isolated as the weakest app's
+      // environment. Per-app passwords remain available via --password.
+      const sharedHash = await resolveSharedSecret("WERFT_PASSWORD_HASH", "password-hash")
+      if (sharedHash.startsWith("scrypt$")) {
+        envValues.WERFT_PASSWORD_HASH = sharedHash
+        notes.push("sign-in uses your standing operator password (shared hash)")
+      } else if (sharedHash === "") {
+        notes.push(
+          "no password set — this app cannot be signed into yet. Store your hash once with: pnpm hash-password '<password>' > ~/.config/werft/password-hash && gh secret set WERFT_PASSWORD_HASH --repo vinoth4v/werft-template < ~/.config/werft/password-hash",
+        )
+      } else {
+        notes.push(
+          "WERFT_PASSWORD_HASH was found but is not a scrypt hash — ignored, so this app has no password. Regenerate it with `pnpm hash-password`",
+        )
+      }
     }
 
     await upsertEnvLocal(webDir, envValues)
