@@ -699,6 +699,29 @@ unmetered, and a sweep that finds nothing exits in seconds.
 
 ---
 
+## Choosing the model per request *(2026-08-09)*
+
+A one-line CSS fix and a six-thousand-word build plan were being answered by
+the same model. The operator asked to choose per request, which is right: the
+subscription has a finite window, and spending the strongest model on
+"rename this button" is how you run out before the work that needed it.
+
+**The awkward part is the hop.** The marketplace knows the choice; `claude.yml`
+does not. It is triggered *by the issue*, so it sees the issue body and never
+the dispatch inputs that produced it. The choice therefore travels inside the
+body as an HTML comment — `<!-- werft:model=opus -->` — invisible when
+rendered, and the only channel that survives.
+
+**Allowlisted, not passed through.** That marker becomes a command-line
+argument, and an issue body is text anyone with write access can edit. Only
+`opus`, `sonnet` and `haiku` are accepted; anything else is ignored with a
+warning rather than forwarded to a shell.
+
+Absent means the subscription's own default, so an issue filed by hand — or
+by any app scaffolded before this existed — behaves exactly as before.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |

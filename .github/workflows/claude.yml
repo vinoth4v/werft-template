@@ -54,6 +54,28 @@ jobs:
             echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set on this repository. Run 'claude setup-token' locally, then: gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo ${{ github.repository }}"
             exit 1
           fi
+      # The marketplace picks a model per request, but it cannot pass it here:
+      # this workflow is triggered by the issue, and sees the issue body rather
+      # than whatever inputs produced it. So the choice travels inside the body
+      # as an HTML comment — invisible when rendered, and the one channel that
+      # survives the hop.
+      #
+      # Absent means the subscription's own default, which is the right
+      # behaviour for anything filed by hand.
+      - name: Read the requested model
+        id: model
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          CHOICE=$(printf '%s' "$ISSUE_BODY" | grep -oE 'werft:model=[a-z0-9.-]+' | head -1 | cut -d= -f2 || true)
+          # Allowlisted rather than passed through: this value becomes a command
+          # argument, and an issue body is text anyone with write access can edit.
+          case "$CHOICE" in
+            opus|sonnet|haiku) echo "arg=--model $CHOICE" >> "$GITHUB_OUTPUT"; echo "using $CHOICE" ;;
+            "") echo "arg=" >> "$GITHUB_OUTPUT"; echo "no model requested — using the subscription default" ;;
+            *) echo "arg=" >> "$GITHUB_OUTPUT"; echo "::warning::ignoring unrecognised model '$CHOICE'" ;;
+          esac
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -74,6 +96,7 @@ jobs:
           # replaces the action's defaults, and dropping them silently costs the
           # progress comment and the ability to read its own failing CI.
           claude_args: >-
+            ${{ steps.model.outputs.arg }}
             --allowedTools 'Edit,MultiEdit,Write,Read,Glob,Grep,LS,Bash(git:*),Bash(pnpm:*),Bash(gh:*),mcp__github_comment__update_claude_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log'
 
       # A failed run currently looks the same whether the subscription is

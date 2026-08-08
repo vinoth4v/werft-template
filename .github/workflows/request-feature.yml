@@ -29,6 +29,12 @@ on:
         required: false
         type: string
         default: ""
+      model:
+        description: "Which model builds it — blank uses the subscription's default"
+        required: false
+        type: choice
+        options: ["", opus, sonnet, haiku]
+        default: ""
 
 jobs:
   request:
@@ -42,6 +48,7 @@ jobs:
           APP_NAME: ${{ inputs.app_name }}
           REQUEST: ${{ inputs.request }}
           TITLE: ${{ inputs.title }}
+          MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
           OWNER=$(gh api user -q .login)
@@ -58,6 +65,10 @@ jobs:
           # interpolating it into a shell argument mangles backticks and quotes.
           {
             printf '@claude %s\n\n' "$REQUEST"
+            # An HTML comment: invisible in the rendered issue, and the only
+            # channel back to claude.yml, which sees the issue body but not the
+            # inputs that produced it.
+            if [ -n "$MODEL" ]; then printf '<!-- werft:model=%s -->\n\n' "$MODEL"; fi
             printf -- '---\n'
             printf 'Requested from the Werft marketplace.\n\n'
             printf 'Work on a branch and open a pull request — never push to `main`.\n'
