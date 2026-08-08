@@ -53,6 +53,23 @@ on:
         required: false
         type: boolean
         default: false
+      region:
+        description: "Where it lives — co-locates database, functions and bucket"
+        required: false
+        type: choice
+        options: ["", us-east, eu-central, us-west]
+        default: ""
+      with_s3:
+        description: "Provision a per-app S3 bucket + bucket-scoped IAM user"
+        required: false
+        type: boolean
+        default: false
+      theme:
+        description: "Design theme"
+        required: true
+        type: choice
+        options: [werft, madras, deck, nordlicht, tinte]
+        default: werft
       first_task:
         description: "Optional first task — filed as an @claude issue in the new repo, so Claude Code starts building immediately"
         required: false
@@ -70,6 +87,11 @@ jobs:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       # The Vercel CLI and the scaffold's API calls both read this env var.
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # The admin AWS key lives here, once, and never in a scaffolded app:
+      # --with-s3 uses it to mint each app its own bucket-scoped IAM user.
+      # Absent is fine — the scaffold only reads it when --with-s3 is passed.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       # Shared secrets the scaffold copies into the new app's own repo —
       # resolveSharedSecret reads the environment first, so no ~/.config
       # is needed on a runner.
@@ -103,14 +125,22 @@ jobs:
           APP_EMAIL: ${{ inputs.email }}
           APP_TAGS: ${{ inputs.tags }}
           APP_STATUS: ${{ inputs.status }}
+          APP_REGION: ${{ inputs.region }}
+          APP_THEME: ${{ inputs.theme }}
         run: |
           set -euo pipefail
+          # --dir is the runner's throwaway checkout, not the operator's
+          # laptop: the app is pushed to GitHub and the directory discarded
+          # when the runner ends. The ~/Documents/workspace default only
+          # applies to a human running the CLI.
           FLAGS=(--name "$APP_NAME" --description "$APP_DESCRIPTION" --email "$APP_EMAIL" \
-                 --status "$APP_STATUS" --dir "$RUNNER_TEMP/$APP_NAME" --yes)
+                 --status "$APP_STATUS" --theme "$APP_THEME" --dir "$RUNNER_TEMP/$APP_NAME" --yes)
           [ -n "$APP_TAGS" ] && FLAGS+=(--tags "$APP_TAGS")
+          [ -n "$APP_REGION" ] && FLAGS+=(--region "$APP_REGION")
           [ "${{ inputs.visibility }}" = "public" ] && FLAGS+=(--public) || FLAGS+=(--private)
           [ "${{ inputs.deploy }}" = "false" ] && FLAGS+=(--no-deploy)
           [ "${{ inputs.vercel_sso }}" = "true" ] && FLAGS+=(--vercel-sso)
+          [ "${{ inputs.with_s3 }}" = "true" ] && FLAGS+=(--with-s3)
           node --experimental-strip-types packages/create-werft-app/src/cli.ts "${FLAGS[@]}"
       - name: File the first task as an @claude issue
         if: ${{ inputs.first_task != '' }}
