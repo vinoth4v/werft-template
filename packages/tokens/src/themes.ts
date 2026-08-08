@@ -13,6 +13,15 @@ import { color } from "./tokens.ts"
  *
  * The others are designed directions: nordlicht (graphite + aurora violet,
  * dark-leaning) and tinte (editorial ink on paper, near-monochrome).
+ *
+ * The kimi-* themes sample the visual directions Kimi Websites uses in its
+ * public showcases. They keep the same token names so an agent-built app can
+ * adopt the Kimi look by switching theme, without touching any component.
+ *
+ *   kimi-earth    — warm parchment, terracotta, serif (Ceramics Online Store)
+ *   kimi-cocoa    — chocolate luxury, caramel gold (Cocoa Hills)
+ *   kimi-editorial — sharp monochrome, high contrast (British Museum / Editorial Reader)
+ *   kimi-terminal — dark data-dense UI, amber accents (GMT://TERMINAL)
  */
 
 /** A per-scheme value for each of the semantic colour tokens. Widened from
@@ -97,6 +106,80 @@ export const THEMES = {
       accent: { light: "#1a1a1a", dark: "#f2f0ea" },
       danger: { light: "#b3261e", dark: "#ff7a70" },
       success: { light: "#1f7a45", dark: "#63c489" },
+    },
+    radius: { sm: "0.125rem", md: "0.25rem", lg: "0.375rem", full: "9999px" },
+  },
+  "kimi-earth": {
+    label: "Kimi Earth",
+    inspiration: "From Kimi's Ceramics Online Store — warm parchment, terracotta, serif.",
+    color: {
+      bg: { light: "#f5f2e9", dark: "#211d18" },
+      surface: { light: "#faf8f2", dark: "#2c2620" },
+      fg: { light: "#2d2922", dark: "#f5efe6" },
+      muted: { light: "#8a8072", dark: "#a99c8a" },
+      border: { light: "#e8e0d0", dark: "#3a332a" },
+      accent: { light: "#b85c3e", dark: "#d96a45" },
+      danger: { light: "#a83232", dark: "#d97b6c" },
+      success: { light: "#5a7d5a", dark: "#86b386" },
+    },
+    fontFamily: {
+      sans: "Georgia, 'Iowan Old Style', 'Times New Roman', serif",
+      mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    },
+  },
+  "kimi-cocoa": {
+    label: "Kimi Cocoa",
+    inspiration: "From Kimi's Cocoa Hills — chocolate luxury, caramel gold.",
+    color: {
+      bg: { light: "#f5f0e8", dark: "#1f1810" },
+      surface: { light: "#ffffff", dark: "#2e241a" },
+      fg: { light: "#2c2218", dark: "#f5efe6" },
+      muted: { light: "#7d6e5e", dark: "#a99c8a" },
+      border: { light: "#e5ddd0", dark: "#3a332a" },
+      accent: { light: "#c9a66b", dark: "#d4b87a" },
+      danger: { light: "#b3261e", dark: "#d97b6c" },
+      success: { light: "#4a7c59", dark: "#86b386" },
+    },
+    fontFamily: {
+      sans: "Georgia, 'Iowan Old Style', 'Times New Roman', serif",
+      mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    },
+  },
+  "kimi-editorial": {
+    label: "Kimi Editorial",
+    inspiration: "From Kimi's British Museum / Editorial Reader — sharp monochrome, high contrast.",
+    color: {
+      bg: { light: "#ffffff", dark: "#101010" },
+      surface: { light: "#fafafa", dark: "#1a1a1a" },
+      fg: { light: "#141414", dark: "#f2f0ea" },
+      muted: { light: "#5c5a54", dark: "#8a8984" },
+      border: { light: "#e5e2db", dark: "#34322c" },
+      accent: { light: "#1a1a1a", dark: "#f2f0ea" },
+      danger: { light: "#b3261e", dark: "#ff7a70" },
+      success: { light: "#1f7a45", dark: "#63c489" },
+    },
+    fontFamily: {
+      sans: "'Helvetica Neue', Arial, sans-serif",
+      mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    },
+    radius: { sm: "0.125rem", md: "0.25rem", lg: "0.375rem", full: "9999px" },
+  },
+  "kimi-terminal": {
+    label: "Kimi Terminal",
+    inspiration: "From Kimi's GMT://TERMINAL — dark data-dense UI, amber accents.",
+    color: {
+      bg: { light: "#f4f6f8", dark: "#0b0d12" },
+      surface: { light: "#ffffff", dark: "#171b23" },
+      fg: { light: "#16181d", dark: "#e8eaee" },
+      muted: { light: "#5d6470", dark: "#8b93a1" },
+      border: { light: "#dfe3e8", dark: "#262c37" },
+      accent: { light: "#d97706", dark: "#f59e0b" },
+      danger: { light: "#dc2626", dark: "#f87171" },
+      success: { light: "#0d9488", dark: "#2dd4bf" },
+    },
+    fontFamily: {
+      sans: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
     },
     radius: { sm: "0.125rem", md: "0.25rem", lg: "0.375rem", full: "9999px" },
   },
