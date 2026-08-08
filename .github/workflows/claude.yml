@@ -40,3 +40,21 @@ jobs:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.KOMPASS_TOKEN }}
+          # Without this, the action's default tag-mode toolset applies: read,
+          # comment, and git — but no Write and no Edit. Claude would read the
+          # request, post "building…", and have literally no way to create a
+          # file, then exit successfully having changed nothing. That happened
+          # twice on a real build plan before anyone noticed, because a run that
+          # writes no code still reports success.
+          #
+          # Bash is scoped to the three commands it needs: pnpm to install,
+          # build, typecheck and test its own work; git to commit and push a
+          # branch; gh to open the pull request. `main` is protected on every
+          # scaffolded app, so a push there is refused by GitHub rather than
+          # trusted not to happen.
+          #
+          # The mcp tools are listed explicitly because naming --allowedTools
+          # replaces the action's defaults, and dropping them silently costs the
+          # progress comment and the ability to read its own failing CI.
+          claude_args: >-
+            --allowedTools 'Edit,MultiEdit,Write,Read,Glob,Grep,LS,Bash(git:*),Bash(pnpm:*),Bash(gh:*),mcp__github_comment__update_claude_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log'
