@@ -11,6 +11,8 @@ import {
   neonDeleteCommand,
   verifyNeonApiKey,
 } from "./neon.ts"
+import { REGIONS } from "./regions.ts"
+import { createBucket, deleteBucket, resolveAwsCredentials } from "./s3.ts"
 import {
   extractDeployUrl,
   getProjectSettings,
@@ -147,9 +149,13 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
   let url = ""
 
   const name = options.name ?? ""
-  const dir = resolve(options.dir ?? `./${name}`)
+  // Default home is ~/Documents/workspace/<name> — where the operator keeps
+  // every other app — not the current directory, which on a CI runner is a
+  // checkout of the template itself.
+  const dir = resolve(options.dir ?? join(homedir(), "Documents", "workspace", name))
   const webDir = join(dir, "apps", "web")
   const neonApiKey = process.env.NEON_API_KEY ?? ""
+  const region = options.region ? REGIONS[options.region] : undefined
 
   try {
     // ---- 1. preflight -----------------------------------------------------
@@ -247,6 +253,17 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     await writeFile(join(dir, "werft.json"), renderWerftJson(app), "utf8")
     await renameRootPackage(dir, name)
     await writeFile(join(dir, "README.md"), appReadme(app), "utf8")
+
+    // The chosen theme, committed with the app. The token package's build
+    // script reads this; absent (or "werft") means the default look. Writing
+    // it always keeps the app self-describing rather than special-casing the
+    // default away.
+    await writeFile(
+      join(dir, "packages", "tokens", "theme.json"),
+      `${JSON.stringify({ theme: options.theme }, null, 2)}\n`,
+      "utf8",
+    )
+    if (options.theme !== "werft") log.info(`theme: ${options.theme}`)
 
     const authSecret = randomBytes(32).toString("base64")
     const envValues: Record<string, string> = {
@@ -354,13 +371,14 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     if (runner.isDryRun) {
       log.info(`[dry-run] would POST https://console.neon.tech/api/v2/projects {"name":"${name}"}`)
     } else {
-      const project = await createNeonProject(name, neonApiKey)
+      const project = await createNeonProject(name, neonApiKey, region?.neon)
       neonProjectId = project.id
       ledger.record({
         what: `Neon project ${project.id}`,
         cleanup: neonDeleteCommand(project.id),
         undo: async () => deleteNeonProject(project.id, neonApiKey),
       })
+      if (region) log.info(`Neon region: ${region.neon}`)
       envValues.DATABASE_URL = project.connectionUri
       await upsertEnvLocal(webDir, envValues)
 
@@ -371,6 +389,44 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
         env: { DATABASE_URL: project.connectionUri },
         stream: true,
       })
+    }
+
+    // ---- 9b. optional S3 bucket ------------------------------------------
+    // For apps whose architecture needs blob storage — the fleet already had
+    // six such buckets before the scaffold could make them. Opt-in: most apps
+    // never touch S3, and an unused empty bucket is clutter, not a safety net.
+    currentStep = "create S3 bucket"
+    if (options.withS3) {
+      // Bucket names are globally unique across all of AWS and DNS-constrained,
+      // so the app name alone is a coin-flip to be taken; a short random
+      // suffix makes collision effectively impossible while staying legible.
+      const bucket = `${name}-werft-${randomBytes(3).toString("hex")}`
+      const awsRegion = region?.aws ?? "eu-central-1"
+      if (runner.isDryRun) {
+        log.step("Creating the S3 bucket")
+        log.info(`[dry-run] would create bucket ${bucket} in ${awsRegion}`)
+      } else {
+        log.step(`Creating the S3 bucket ${bucket}`)
+        const creds = await resolveAwsCredentials()
+        if (!creds) {
+          throw new StepFailure(
+            "no AWS credentials: set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or a [default] profile in ~/.aws/credentials. --with-s3 needs them",
+          )
+        }
+        await createBucket(bucket, awsRegion, creds)
+        ledger.record({
+          what: `S3 bucket ${bucket}`,
+          cleanup: `aws s3api delete-bucket --bucket ${bucket} --region ${awsRegion}`,
+          undo: async () => deleteBucket(bucket, awsRegion, creds),
+        })
+        // The app reads these; the bucket is empty and private by default.
+        envValues.S3_BUCKET = bucket
+        envValues.AWS_REGION = awsRegion
+        await upsertEnvLocal(webDir, envValues)
+        notes.push(
+          `S3 bucket ${bucket} created (empty, private) — the app has S3_BUCKET and AWS_REGION; give the runtime its own scoped AWS keys, do not reuse the admin key`,
+        )
+      }
     }
 
     // ---- 10. Vercel ------------------------------------------------------
@@ -437,21 +493,26 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
         rootDirectory: "apps/web",
         framework: "nextjs",
         ssoProtection: options.vercelSso ? SSO_ENABLED : null,
+        // Only when a region was chosen — omitting leaves Vercel's default,
+        // so unregioned apps behave exactly as before.
+        ...(region ? { serverlessFunctionRegion: region.vercel } : {}),
       })
 
       const confirmed = await getProjectSettings(linked, auth.token)
       const ssoMatches = Boolean(confirmed?.ssoProtection) === options.vercelSso
+      const regionMatches = !region || confirmed?.serverlessFunctionRegion === region.vercel
       if (
         confirmed?.rootDirectory !== "apps/web" ||
         confirmed.framework !== "nextjs" ||
-        !ssoMatches
+        !ssoMatches ||
+        !regionMatches
       ) {
         throw new StepFailure(
-          `Vercel reports rootDirectory=${confirmed?.rootDirectory ?? "unset"} framework=${confirmed?.framework ?? "unset"} sso=${confirmed?.ssoProtection ? "on" : "off"} after asking for apps/web, nextjs and sso ${options.vercelSso ? "on" : "off"}`,
+          `Vercel reports rootDirectory=${confirmed?.rootDirectory ?? "unset"} framework=${confirmed?.framework ?? "unset"} sso=${confirmed?.ssoProtection ? "on" : "off"} region=${confirmed?.serverlessFunctionRegion ?? "default"} after asking for apps/web, nextjs, sso ${options.vercelSso ? "on" : "off"}${region ? `, region ${region.vercel}` : ""}`,
         )
       }
       log.info(
-        `confirmed: rootDirectory = apps/web, framework = nextjs, Vercel SSO ${options.vercelSso ? "on" : "off"}`,
+        `confirmed: rootDirectory = apps/web, framework = nextjs, Vercel SSO ${options.vercelSso ? "on" : "off"}${region ? `, region ${region.vercel}` : ""}`,
       )
       if (!options.vercelSso) {
         notes.push("Vercel SSO is off — the app's own single-user gate is the access control")

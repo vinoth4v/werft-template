@@ -160,6 +160,10 @@ export type ProjectSettings = {
   rootDirectory: string | null
   framework: string | null
   ssoProtection: SsoProtection
+  /** Where the app's functions run — co-located with its database by the
+   * --region option. Probed against the real API (iad1/fra1/sfo1 all
+   * accepted and read back) before being offered. */
+  serverlessFunctionRegion?: string | null
 }
 
 /**
@@ -209,6 +213,7 @@ export async function getProjectSettings(
     rootDirectory?: unknown
     framework?: unknown
     ssoProtection?: unknown
+    serverlessFunctionRegion?: unknown
   } | null
 
   const sso = body?.ssoProtection
@@ -221,5 +226,7 @@ export async function getProjectSettings(
     rootDirectory: typeof body?.rootDirectory === "string" ? body.rootDirectory : null,
     framework: typeof body?.framework === "string" ? body.framework : null,
     ssoProtection: typeof deploymentType === "string" ? { deploymentType } : null,
+    serverlessFunctionRegion:
+      typeof body?.serverlessFunctionRegion === "string" ? body.serverlessFunctionRegion : null,
   }
 }

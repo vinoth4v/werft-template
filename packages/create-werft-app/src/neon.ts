@@ -49,14 +49,21 @@ export async function verifyNeonApiKey(apiKey: string): Promise<NeonKeyCheck> {
   return response.status === 401 || response.status === 403 ? "rejected" : "unreachable"
 }
 
-export async function createNeonProject(name: string, apiKey: string): Promise<NeonProject> {
+export async function createNeonProject(
+  name: string,
+  apiKey: string,
+  regionId?: string,
+): Promise<NeonProject> {
   const response = await fetch(`${NEON_API}/projects`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ project: { name } }),
+    // Omitting region_id keeps Neon's own default — which real runs showed
+    // varies (us-east-2 one day, us-west-2 another), the very drift the
+    // --region option exists to pin down.
+    body: JSON.stringify({ project: regionId ? { name, region_id: regionId } : { name } }),
   })
 
   const body = (await response.json().catch(() => null)) as {
