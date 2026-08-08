@@ -134,15 +134,67 @@ export function extractDeployUrl(output: string): string {
 }
 
 /**
- * The stable alias Vercel assigns every project at creation, which every
- * production deploy promotes to — confirmed against two real projects, both
- * serving `https://<project-name>.vercel.app` from their Aliases list.
+ * A guess at the alias, used only when Vercel cannot be asked.
  *
- * `name` is already constrained by NAME_PATTERN to lowercase letters, digits
- * and hyphens, which is exactly a valid subdomain — no transformation needed.
+ * `<project-name>.vercel.app` is what Vercel assigns *when that subdomain is
+ * globally free*, and it usually is for an unusual name — which is why this
+ * held for every app tested while it was written. It is not a rule. A common
+ * name collides with a project in someone else's account, Vercel silently
+ * assigns `<name>-<random-word>.vercel.app` instead, and the guess becomes a
+ * URL that 404s.
+ *
+ * Found by `world-watch`: recorded as world-watch.vercel.app, actually served
+ * from world-watch-ruby.vercel.app, with the dead link written into both
+ * werft.json and the registry — so the marketplace showed a Launch button
+ * that went nowhere. Prefer `productionAliasUrl` and keep this as fallback.
  */
 export function stableAliasUrl(name: string): string {
   return `https://${name}.vercel.app`
+}
+
+/**
+ * Asks Vercel what the project's production alias actually is.
+ *
+ * The project's own domain list is authoritative: it holds exactly the
+ * auto-assigned `*.vercel.app` alias that production deploys promote to,
+ * whatever suffix Vercel had to add to make it unique. Deployment-specific
+ * URLs are deliberately not used — they are immutable and go stale on the
+ * next deploy.
+ *
+ * Returns "" rather than throwing when the answer is unavailable, so a
+ * network blip records a fallback URL instead of failing a scaffold that has
+ * already created every remote resource.
+ */
+export async function productionAliasUrl(
+  projectName: string,
+  token: string,
+  orgId?: string,
+): Promise<string> {
+  const query = orgId && orgId.startsWith("team_") ? `?teamId=${orgId}` : ""
+  const response = await fetch(
+    `https://api.vercel.com/v9/projects/${projectName}/domains${query}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  ).catch(() => null)
+  if (!response?.ok) return ""
+
+  const body = (await response.json().catch(() => null)) as {
+    domains?: { name?: unknown; verified?: unknown }[]
+  } | null
+
+  const candidates = (body?.domains ?? [])
+    .filter(
+      (domain): domain is { name: string; verified: boolean } =>
+        typeof domain.name === "string" &&
+        domain.name.endsWith(".vercel.app") &&
+        domain.verified === true,
+    )
+    .map((domain) => domain.name)
+    // Shortest wins: Vercel also lists longer team- and branch-scoped aliases
+    // (`<name>-<org>.vercel.app`, `<name>-git-main-<org>.vercel.app`) for the
+    // same project, and the short one is the canonical public URL.
+    .sort((a, b) => a.length - b.length)
+
+  return candidates[0] ? `https://${candidates[0]}` : ""
 }
 
 /**

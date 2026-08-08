@@ -7,6 +7,7 @@ import {
   getProjectSettings,
   type LinkedProject,
   normaliseExpiry,
+  productionAliasUrl,
   readLinkedProject,
   SSO_ENABLED,
   stableAliasUrl,
@@ -267,5 +268,68 @@ describe("ssoProtection parsing", () => {
     await updateProjectSettings(team, "tok", { ssoProtection: SSO_ENABLED })
 
     expect(JSON.parse(seen[0]?.body ?? "{}").ssoProtection).toEqual(SSO_ENABLED)
+  })
+})
+
+describe("productionAliasUrl", () => {
+  it("takes the shortest verified vercel.app domain, not the team- or branch-scoped ones", async () => {
+    // Real shape from a real project: Vercel lists all three for one project.
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            domains: [
+              { name: "world-watch-git-main-someorg.vercel.app", verified: true },
+              { name: "world-watch-ruby.vercel.app", verified: true },
+              { name: "world-watch-someorg.vercel.app", verified: true },
+            ],
+          }),
+          { status: 200 },
+        ),
+    )
+    expect(await productionAliasUrl("world-watch", "tok")).toBe(
+      "https://world-watch-ruby.vercel.app",
+    )
+  })
+
+  it("ignores unverified and non-vercel.app domains", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            domains: [
+              { name: "short.example.com", verified: true },
+              { name: "pending.vercel.app", verified: false },
+              { name: "my-app-teal.vercel.app", verified: true },
+            ],
+          }),
+          { status: 200 },
+        ),
+    )
+    expect(await productionAliasUrl("my-app", "tok")).toBe("https://my-app-teal.vercel.app")
+  })
+
+  it("returns empty rather than throwing when Vercel cannot answer", async () => {
+    // The scaffold has already created every remote resource by the time this
+    // runs, so an unreachable API must degrade to a fallback, not fail the run.
+    vi.stubGlobal("fetch", async () => new Response("nope", { status: 500 }))
+    expect(await productionAliasUrl("my-app", "tok")).toBe("")
+
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("network down")
+    })
+    expect(await productionAliasUrl("my-app", "tok")).toBe("")
+  })
+
+  it("never puts the token in the URL", async () => {
+    const seen: string[] = []
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      seen.push(String(url))
+      return new Response(JSON.stringify({ domains: [] }), { status: 200 })
+    })
+    await productionAliasUrl("my-app", "super-secret-token")
+    expect(seen[0]).not.toContain("super-secret-token")
   })
 })

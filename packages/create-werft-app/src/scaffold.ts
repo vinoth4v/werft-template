@@ -17,6 +17,7 @@ import { createBucket, deleteBucket, resolveAwsCredentials } from "./s3.ts"
 import {
   extractDeployUrl,
   getProjectSettings,
+  productionAliasUrl,
   readLinkedProject,
   resolveVercelToken,
   SSO_ENABLED,
@@ -657,7 +658,24 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       if (thisDeployment === "" && !runner.isDryRun) {
         notes.push("the deploy produced no URL — something may be wrong; check `vercel ls`")
       }
-      url = runner.isDryRun ? "" : stableAliasUrl(name)
+      if (runner.isDryRun) {
+        url = ""
+      } else {
+        // Ask Vercel rather than assuming `<name>.vercel.app`: a name that
+        // collides with someone else's project gets a suffix, and guessing
+        // records a URL that 404s. Fall back to the guess only if the API
+        // cannot answer — every remote resource already exists by now, so
+        // this must not be the thing that fails the run.
+        url = vercelApiToken ? await productionAliasUrl(name, vercelApiToken, vercelOrgId) : ""
+        if (url === "") {
+          url = stableAliasUrl(name)
+          notes.push(
+            `could not read the production alias from Vercel — recorded ${url}, which is a guess; confirm with \`vercel inspect\` and fix werft.json if it differs`,
+          )
+        } else {
+          log.info(`production alias: ${url}`)
+        }
+      }
     } else {
       notes.push("not deployed — run `vercel deploy --prod` when ready, then set werft.json url")
     }
