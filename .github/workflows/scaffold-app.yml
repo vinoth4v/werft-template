@@ -85,10 +85,17 @@ jobs:
           node-version-file: .nvmrc
       - name: Install the Vercel CLI
         run: npm install -g vercel@58
-      - name: Configure git identity
+      - name: Configure git identity and credentials
         run: |
           git config --global user.email "werft-scaffold[bot]@users.noreply.github.com"
           git config --global user.name "werft-scaffold[bot]"
+          # gh repo create --push authenticates itself, but the scaffold's
+          # later bare `git push` (recording the deploy URL) needs git to ask
+          # gh for credentials — on a laptop that helper is already installed,
+          # on a runner it is not. Without this line the run dies at the very
+          # last push with "could not read Username", after everything else
+          # succeeded (proven once; rollback removed all four resources).
+          gh auth setup-git
       - name: Run create-werft-app
         env:
           APP_NAME: ${{ inputs.app_name }}
