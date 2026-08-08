@@ -133,6 +133,43 @@ Gate 3 is the one that carries the plan. Models don't get to self-report success
 
 **Done when:** a PR from an agent produces a live URL on an isolated database, and a broken build blocks the merge without you looking at it.
 
+**Two real bugs found operating the pipeline after Phase 3–5 were already
+built, 2026-08-08 — worth their own entry, since both mean the done-when
+above was quietly not fully true until today:**
+
+1. **`drizzle-kit migrate` hung ~60s then failed with no error message, four
+   times in a row in GitHub Actions**, against a Neon branch independently
+   proven completely healthy: a direct HTTP query returned in 531ms, a
+   direct websocket `Pool` query in 1087ms, and the identical `drizzle-kit
+   migrate` command run locally against the identical connection string
+   succeeded in 2 seconds. The one thing that differed across every failure
+   was the GitHub-hosted runner's network path to Neon's websocket proxy —
+   `drizzle-kit migrate`'s CLI defaults to a websocket `Pool`, unlike the
+   app's own runtime code, which already used the HTTP driver. Fixed by
+   switching `db:migrate` to `drizzle-orm/neon-http/migrator`'s own
+   `migrate()`, over the same HTTP driver `apps/web/src/db/client.ts`
+   already used — verified against the exact branch that had failed 4×,
+   applies in ~1s.
+
+2. **Requiring only `preview-smoke` in branch protection does not actually
+   enforce anything about the database pipeline.** `preview-smoke` depends
+   on `neon-preview-branch` via `needs:`, so when that job fails,
+   `preview-smoke` *skips* rather than fails — and GitHub does not treat a
+   skipped required check as blocking a merge. Bug #1 above merged into
+   `werft-marketplace`'s `main` on the very first attempt, silently, because
+   of exactly this gap — `neon-preview-branch`'s repeated failure never
+   blocked anything. Fixed by adding `neon-preview-branch` to
+   `required_status_checks` directly on every real app (five checks now,
+   not four); documented in AGENTS.md so the next app scaffolded gets the
+   correct required set from the start.
+
+Both fixes also exercised `reap-stale-preview-branches.yml` for real, on a
+genuine (not synthetic) orphaned branch this debugging session produced by
+retrying CI against an already-merged PR: triggered manually, it correctly
+identified `preview/pr-11` as belonging to a closed PR and deleted it —
+confirmed empty afterward. The reap mechanism itself is proven live, not
+just unit-reasoned-about.
+
 ---
 
 ## Phase 3 — Remote Claude Code *(weeks 4–5)*
