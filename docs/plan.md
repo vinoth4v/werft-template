@@ -217,4 +217,3 @@ A Next.js app on Vercel reading `werft_apps`. Deliberately thin.
 1. Create `werft-template` on GitHub.
 2. Write `AGENTS.md` by hand. First commit.
 3. Pick the first real app to build on it.
-# probe
