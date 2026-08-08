@@ -97,3 +97,15 @@ describe("parseArgs", () => {
     expect(text).toContain("NEON_API_KEY")
   })
 })
+
+describe("--title", () => {
+  it("is parsed as a display name, separate from the slug", () => {
+    const result = parseArgs(["--name", "my-app", "--title", "My App"])
+    expect(result.ok && result.options.title).toBe("My App")
+  })
+
+  it("is undefined when not given, so werft.json omits it", () => {
+    const result = parseArgs(["--name", "my-app"])
+    expect(result.ok && result.options.title).toBeUndefined()
+  })
+})

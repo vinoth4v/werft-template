@@ -244,6 +244,10 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     log.step("Writing werft.json and app identity")
     const app: WerftJson = {
       name,
+      // Omitted rather than defaulted to the slug: the registry falls back to
+      // the name on its own, and writing name twice into every werft.json
+      // would make the field look required when it is not.
+      ...(options.title ? { title: options.title } : {}),
       description: options.description ?? `${name}, scaffolded from werft-template`,
       stack: options.stack ?? (await templateStack(dir)),
       url: "",
