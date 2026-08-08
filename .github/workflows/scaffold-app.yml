@@ -75,6 +75,12 @@ on:
         type: choice
         options: [werft, madras, deck, nordlicht, tinte, kimi-earth, kimi-cocoa, kimi-editorial, kimi-terminal]
         default: werft
+      model:
+        description: "Which model builds the plan — blank uses the subscription's default"
+        required: false
+        type: choice
+        options: ["", opus, sonnet, haiku]
+        default: ""
       build_plan:
         description: "Build plan — filed as an @claude issue so Claude Code starts building immediately. Paste the whole plan; markdown is fine"
         required: false
@@ -164,6 +170,7 @@ jobs:
         env:
           APP_NAME: ${{ inputs.app_name }}
           BUILD_PLAN: ${{ inputs.build_plan }}
+          MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
           OWNER=$(gh api user -q .login)
@@ -172,6 +179,7 @@ jobs:
           # mangles backticks, quotes and newlines.
           {
             printf '@claude Build this app according to the plan below.\n\n'
+            if [ -n "$MODEL" ]; then printf '<!-- werft:model=%s -->\n\n' "$MODEL"; fi
             printf '%s\n' "$BUILD_PLAN"
             printf '\n---\n'
             printf 'Filed automatically by the Werft create-app form. Work on a branch and open a pull request; a human merges.\n\n'
