@@ -1,0 +1,97 @@
+name: Claude retry
+
+# Re-runs a failed @claude job every 15 minutes, so hitting the subscription's
+# usage limit costs a delay instead of the work.
+#
+# The subscription is a single auth path with a hard ceiling and no fallback
+# chain — that was chosen deliberately, for predictable model quality. The cost
+# is that exhaustion kills a run outright: no branch, no PR, and a build plan
+# abandoned halfway. Waiting for the window to reset and re-asking by hand is
+# the manual version of this file.
+#
+# It re-runs the run rather than filing a fresh request, which matters: the
+# original issue_comment payload is preserved, so Claude wakes with the same
+# context, and GitHub's own `run_attempt` counter is the attempt count — no
+# label to manage, no state file to go stale, nothing to leak if it fails
+# halfway.
+#
+# Capped on purpose. A run failing because the code is wrong will fail again,
+# and retrying it forever would turn one bad request into an endless stream of
+# identical failures. After MAX_ATTEMPTS it stops and says so.
+on:
+  schedule:
+    # Every 15 minutes. Cheap: these repos are public, so Actions minutes are
+    # free, and a sweep that finds nothing exits in seconds.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Five attempts over roughly an hour. Long enough to outlast a usage
+      # window that resets, short enough that a genuinely broken request stops
+      # being retried the same morning.
+      MAX_ATTEMPTS: 5
+      # Older than this and a retry is not wanted: the operator has moved on,
+      # and quietly resuming yesterday's abandoned build is a surprise.
+      LOOKBACK_HOURS: 6
+    steps:
+      - name: Re-run whatever failed
+        run: |
+          set -euo pipefail
+
+          CUTOFF=$(date -u -d "-${LOOKBACK_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                || date -u -v-${LOOKBACK_HOURS}H +%Y-%m-%dT%H:%M:%SZ)
+          echo "looking for failed Claude runs since $CUTOFF"
+
+          # Only the Claude workflow, only failures, newest first.
+          RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" \
+                   --workflow claude.yml --status failure --limit 20 \
+                   --json databaseId,createdAt,attempt,event,displayTitle)
+
+          COUNT=$(echo "$RUNS" | jq --arg cutoff "$CUTOFF" '[.[] | select(.createdAt > $cutoff)] | length')
+          echo "failed runs in window: $COUNT"
+          if [ "$COUNT" = "0" ]; then
+            echo "nothing to retry" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "$RUNS" | jq -c --arg cutoff "$CUTOFF" '.[] | select(.createdAt > $cutoff)' | while read -r run; do
+            ID=$(echo "$run" | jq -r .databaseId)
+            ATTEMPT=$(echo "$run" | jq -r .attempt)
+            TITLE=$(echo "$run" | jq -r .displayTitle)
+
+            if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+              echo "run $ID: $ATTEMPT attempts already — leaving it alone"
+              echo "- \`$ID\` gave up after $ATTEMPT attempts: $TITLE" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # A newer successful run for the same workflow means the work has
+            # already been done; re-running the old failure would duplicate it.
+            NEWER_OK=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow claude.yml \
+                         --status success --limit 5 --json databaseId \
+                       | jq --argjson id "$ID" '[.[] | select(.databaseId > $id)] | length')
+            if [ "$NEWER_OK" != "0" ]; then
+              echo "run $ID: superseded by a later success — skipping"
+              continue
+            fi
+
+            echo "run $ID: attempt $ATTEMPT — re-running"
+            if gh run rerun "$ID" --repo "$GITHUB_REPOSITORY" --failed; then
+              echo "- \`$ID\` re-run (attempt $((ATTEMPT + 1)) of $MAX_ATTEMPTS): $TITLE" >> "$GITHUB_STEP_SUMMARY"
+            else
+              # A re-run can be refused — the run may be too old, or already
+              # running. Not a failure of this sweep; the next one will look
+              # again.
+              echo "- \`$ID\` could not be re-run; will look again in 15 minutes" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done

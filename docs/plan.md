@@ -668,6 +668,37 @@ It delegates to the app's own `build` script instead.
 
 ---
 
+## A usage limit costs a delay, not the work *(2026-08-09)*
+
+Subscription-only auth was chosen for predictable model quality, and the
+price is a hard ceiling with no fallback chain: exhaustion killed a run
+outright — no branch, no PR, a build plan abandoned halfway — and the only
+signal was an email saying a workflow failed.
+
+**`claude-retry.yml`** sweeps every 15 minutes and re-runs failed Claude runs
+from the last six hours, up to five attempts. It re-runs the *run* rather than
+filing a fresh request, which is the detail that makes it work: the original
+`issue_comment` payload is preserved, so Claude wakes with the same context,
+and GitHub's own `run_attempt` is the attempt counter — no label to manage, no
+state file to go stale. A run superseded by a later success is skipped rather
+than duplicating finished work.
+
+Capped deliberately. A run that failed because the request was impossible will
+fail identically forever, and an uncapped retry turns one bad request into an
+endless stream of the same failure.
+
+**`claude.yml` now says why it failed.** Exhaustion and a genuine error looked
+identical — a red tick either way. It reads its own log and comments on the
+issue with which of three causes it was (usage limit, authentication, or
+something else) and what to do about each, because "wait, it will retry
+itself" and "your token is dead, retrying is pointless" are opposite
+instructions and the operator could not previously tell them apart.
+
+Free to run this often: the repos are public, so Actions minutes are
+unmetered, and a sweep that finds nothing exits in seconds.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |

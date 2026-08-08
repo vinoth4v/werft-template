@@ -75,3 +75,37 @@ jobs:
           # progress comment and the ability to read its own failing CI.
           claude_args: >-
             --allowedTools 'Edit,MultiEdit,Write,Read,Glob,Grep,LS,Bash(git:*),Bash(pnpm:*),Bash(gh:*),mcp__github_comment__update_claude_comment,mcp__github_ci__get_ci_status,mcp__github_ci__get_workflow_run_details,mcp__github_ci__download_job_log'
+
+      # A failed run currently looks the same whether the subscription is
+      # exhausted or the request was impossible: a red tick and an email saying
+      # "workflow failed". This says which, on the issue where the work was
+      # asked for, so the next move is obvious rather than a log-reading
+      # exercise.
+      #
+      # Reads its own job log, which is why the job has actions: read.
+      - name: Say why it failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          LOG=$(gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --log 2>/dev/null || echo "")
+
+          if echo "$LOG" | grep -qiE "usage limit|rate.?limit|429|quota exceeded|insufficient (credit|quota)"; then
+            CAUSE="the Claude subscription's usage limit"
+            NEXT="It will be retried automatically every 15 minutes for up to 5 attempts (see claude-retry.yml). If the window is longer than that, run claude-escalate.yml, which routes through the Kompass gateway instead."
+          elif echo "$LOG" | grep -qiE "401|unauthor|invalid.?(token|api.?key)|CLAUDE_CODE_OAUTH_TOKEN is not set"; then
+            CAUSE="authentication — the token is missing, expired or rejected"
+            NEXT="Run \`claude setup-token\` and update the CLAUDE_CODE_OAUTH_TOKEN secret on this repository. Retrying will not help until then."
+          else
+            CAUSE="something other than a usage limit or authentication"
+            NEXT="The run log has the detail. It will still be retried up to 5 times, which will not help if the request itself is impossible."
+          fi
+
+          gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body \
+          "**This run failed: $CAUSE.**
+
+          $NEXT
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            || echo "could not comment — the trigger may not have been an issue"
