@@ -595,6 +595,43 @@ similar names are a coincidence. All 17 rows are real.
 
 ---
 
+## Every session writes down why *(2026-08-08, late)*
+
+The operator's ask: a harness rule that produces documentation an agent and a
+human can both use, after every build session, so the logic survives.
+
+**Two documents, and the split is the point.** `docs/ARCHITECTURE.md`
+describes the app as it is now — purpose, domain model, data model, surfaces,
+external services, decisions in force, known gaps — and is rewritten as the
+design changes. `docs/SESSIONS.md` is append-only: what was asked, what
+changed, what was decided and why, what was rejected, what is still open.
+Conflating them gives you one of two failures — a description that
+accumulates history until nobody reads it, or a history that is rewritten
+until it records nothing.
+
+**Why it needs saying at all:** the diff already survives in git; the
+argument does not. An agent picking an app up months later reads the code
+perfectly well and still cannot tell which approaches were tried and
+abandoned — which is how work gets redone and decisions get quietly
+reversed. Fixed headings, so a reader finds the data model without reading
+prose and two sessions do not invent two structures.
+
+**Three places, because a rule in one place is a suggestion:** the hard rule
+in AGENTS.md, which every app inherits; the sentence in the issue body that
+`@claude` actually reads first, both for a build plan and a change request;
+and a `docs` job in pr-checks that fails a PR changing source while
+documenting nothing. Test-only, workflow-only and docs-only changes are not
+asked to explain themselves.
+
+**A wrinkle worth recording:** scaffolded apps had nowhere to write any of
+this. The scaffold deletes werft's own `docs/` as template-internal — rightly
+— and left an app with a ten-line README. It now seeds both documents, so the
+structure exists before the first feature does. The check accepts any
+`docs/*.md` rather than those two names, because this repo keeps its
+reasoning in plan.md and inherits the same workflow.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |

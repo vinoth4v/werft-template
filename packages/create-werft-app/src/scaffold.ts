@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { readFile, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { Options } from "./args.ts"
@@ -259,6 +259,12 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     await writeFile(join(dir, "werft.json"), renderWerftJson(app), "utf8")
     await renameRootPackage(dir, name)
     await writeFile(join(dir, "README.md"), appReadme(app), "utf8")
+    // Somewhere for an app to keep its own reasoning. werft's docs/ was just
+    // removed as template-internal; these replace it with the app's own, seeded
+    // rather than left to be invented differently by every app.
+    await mkdir(join(dir, "docs"), { recursive: true })
+    await writeFile(join(dir, "docs", "ARCHITECTURE.md"), appArchitectureDoc(app), "utf8")
+    await writeFile(join(dir, "docs", "SESSIONS.md"), appSessionLog(app), "utf8")
 
     // The chosen theme, committed with the app. The token package's build
     // script reads this; absent (or "werft") means the default look. Writing
@@ -861,6 +867,96 @@ pnpm dev
 
 Environment lives in \`apps/web/.env.local\`; \`apps/web/.env.example\` lists what
 is needed. Run \`pnpm hash-password\` to set the operator password.
+`
+}
+
+/**
+ * The app's current design, rewritten as it changes.
+ *
+ * Separate from SESSIONS.md on purpose, and the split is the whole point: a
+ * document that records history cannot also describe the present without
+ * becoming unreadable, and one that is rewritten each time loses why anything
+ * was done. This is the present tense; SESSIONS.md is the past.
+ *
+ * The headings are fixed so an agent can find the data model without reading
+ * the prose, and so two sessions do not invent two structures.
+ */
+function appArchitectureDoc(app: WerftJson): string {
+  return `# ${app.name} — architecture
+
+How this app works, in its current form. Rewritten whenever the design
+changes, so it describes the present rather than accumulating history —
+that is SESSIONS.md's job.
+
+## Purpose
+
+${app.description}
+
+## Domain model
+
+_The things this app talks about, and how they relate. Not tables — concepts._
+
+## Data model
+
+_Tables, their columns, and why they are shaped that way. Name the migration
+that introduced each one, so a schema question can be traced to its change._
+
+## Surfaces
+
+_Routes, server actions and API endpoints, with what each one is for and who
+may reach it. Everything is behind the operator gate unless stated here._
+
+## External services
+
+_Databases, buckets, model lanes, third-party APIs — and which environment
+variable configures each. Anything that costs money or can fail belongs here._
+
+## Decisions in force
+
+_Choices that constrain future work, and the reason each one was made. A
+decision without its reason gets reversed by the next session that finds it
+inconvenient._
+
+## Known gaps
+
+_What is deliberately missing or unfinished, so it is not mistaken for an
+oversight and quietly "fixed" in the wrong direction._
+`
+}
+
+/**
+ * Append-only record of build sessions.
+ *
+ * Exists because the reasoning behind a change is the part that disappears
+ * first: the diff survives in git, the argument does not. An agent picking this
+ * app up months later can read the diff; it cannot read what was considered and
+ * rejected unless someone wrote it down.
+ */
+function appSessionLog(app: WerftJson): string {
+  return `# ${app.name} — session log
+
+One entry per build session, newest last. Append; never edit an existing
+entry, for the same reason migrations are append-only — a corrected record of
+what was decided is no longer a record.
+
+Each entry answers: what was asked, what changed, what was decided and why,
+what was rejected, and what is still open.
+
+---
+
+## Scaffolded
+
+**Asked:** create the app.
+
+**Changed:** scaffolded from werft-template — App Router, single-operator
+auth, Neon via Drizzle, design tokens, the PR gates, and \`@claude\` wired to
+the operator's Claude subscription.
+
+**Decided:** nothing yet beyond the template's own choices, which are in
+AGENTS.md.
+
+**Open:** everything the app is actually for. See ARCHITECTURE.md, which is
+still a set of empty headings until the first feature lands.
 `
 }
 

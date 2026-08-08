@@ -174,7 +174,9 @@ jobs:
             printf '@claude Build this app according to the plan below.\n\n'
             printf '%s\n' "$BUILD_PLAN"
             printf '\n---\n'
-            printf 'Filed automatically by the Werft create-app form. Work on a branch and open a pull request; a human merges.\n'
+            printf 'Filed automatically by the Werft create-app form. Work on a branch and open a pull request; a human merges.\n\n'
+            printf 'Fill in `docs/ARCHITECTURE.md` as you go — it is seeded with empty headings —\n'
+            printf 'and append to `docs/SESSIONS.md` what you decided and why. See AGENTS.md.\n'
           } > /tmp/plan.md
           gh issue create --repo "$OWNER/$APP_NAME" \
             --title "Build plan" --body-file /tmp/plan.md

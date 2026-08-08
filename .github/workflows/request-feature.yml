@@ -63,7 +63,12 @@ jobs:
             printf 'Work on a branch and open a pull request — never push to `main`.\n'
             printf 'If this needs a schema change, add a Drizzle migration rather than\n'
             printf 'editing an applied one; the PR gets its own Neon branch to prove it\n'
-            printf 'against. All five checks must pass, and a human merges.\n'
+            printf 'against. All five checks must pass, and a human merges.\n\n'
+            printf 'Before opening the PR, update `docs/ARCHITECTURE.md` to describe the app\n'
+            printf 'as it now is, and append an entry to `docs/SESSIONS.md` saying what was\n'
+            printf 'asked, what changed, what you decided and why, what you rejected, and\n'
+            printf 'what is still open. A PR that changes behaviour and documents neither is\n'
+            printf 'incomplete — see AGENTS.md.\n'
           } > /tmp/request.md
 
           SUBJECT="${TITLE:-Change request}"
