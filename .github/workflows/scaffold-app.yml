@@ -104,6 +104,13 @@ jobs:
       # resolveSharedSecret reads the environment first, so no ~/.config
       # is needed on a runner.
       WERFT_REGISTRY_TOKEN: ${{ secrets.WERFT_REGISTRY_TOKEN }}
+      # The new app's @claude runs on the operator's Claude subscription, so the
+      # scaffold copies this into the app's own repository secrets. It has to be
+      # in the runner's environment for resolveSharedSecret to find it —
+      # listing it as a secret to copy is not enough on its own.
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # Still armed: claude-escalate.yml falls back to the gateway when the
+      # subscription is exhausted.
       KOMPASS_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
     steps:
       - uses: actions/checkout@v6
