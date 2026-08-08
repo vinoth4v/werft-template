@@ -349,6 +349,7 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     let vercelProjectId = ""
     let vercelOrgId = ""
     let vercelApiToken = ""
+    let vercelTokenSource = ""
 
     if (runner.isDryRun) {
       log.info(`[dry-run] would POST https://console.neon.tech/api/v2/projects {"name":"${name}"}`)
@@ -428,6 +429,7 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       vercelProjectId = linked.projectId
       vercelOrgId = linked.orgId
       vercelApiToken = auth.token
+      vercelTokenSource = auth.source
 
       // Vercel applies SSO to every new project as a team-level default, so
       // clearing it is an explicit act on each one.
@@ -492,6 +494,16 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // Personal-account projects must not send a teamId at all — same rule the
     // Vercel API calls already follow.
     if (vercelOrgId.startsWith("team_")) ciSecrets.VERCEL_ORG_ID = vercelOrgId
+
+    // The CLI's credential rotates roughly daily — a secret copied from it
+    // went invalid the same afternoon once, taking every Vercel-touching CI
+    // job with it. Arm it anyway (better than a dead pipeline today), but say
+    // so loudly.
+    if (vercelTokenSource === "vercel CLI") {
+      notes.push(
+        "VERCEL_TOKEN was armed from the CLI's rotating credential and will expire within ~a day — mint a long-lived token at vercel.com/account/tokens and keep it in ~/.config/werft/vercel-token",
+      )
+    }
 
     // Shared across every app, unlike the per-project values above. Sourced
     // from the environment or ~/.config/werft/, never invented.
