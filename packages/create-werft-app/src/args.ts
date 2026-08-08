@@ -1,4 +1,11 @@
+import { REGION_KEYS, type RegionKey } from "./regions.ts"
 import { APP_STATUSES, type AppStatus } from "./werft-json.ts"
+
+// Mirrors @werft/tokens' THEME_NAMES; duplicated because this package stays
+// zero-dependency and cannot import a workspace sibling at runtime. The
+// scaffold validates the copy against the template's real themes.ts anyway.
+export const THEME_KEYS = ["werft", "madras", "deck", "nordlicht", "tinte"] as const
+export type ThemeKey = (typeof THEME_KEYS)[number]
 
 export const DEFAULT_TEMPLATE = "https://github.com/vinoth4v/werft-template.git"
 
@@ -18,6 +25,9 @@ export type Options = {
   skipBrowsers: boolean
   deploy: boolean
   vercelSso: boolean
+  region: RegionKey | undefined
+  withS3: boolean
+  theme: ThemeKey
   rollback: boolean
   yes: boolean
   help: boolean
@@ -32,6 +42,7 @@ const BOOLEAN_FLAGS = {
   deploy: "deploy",
   "no-deploy": "deploy",
   "vercel-sso": "vercelSso",
+  "with-s3": "withS3",
   "no-rollback": "rollback",
   private: "private",
   public: "private",
@@ -52,6 +63,8 @@ const VALUE_FLAGS = {
   status: "status",
   email: "email",
   password: "password",
+  region: "region",
+  theme: "theme",
 } as const
 
 export function parseArgs(argv: readonly string[]): ParseResult {
@@ -74,6 +87,9 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     // Off by default: the app's own gate is the access control, and Vercel SSO
     // in front of the whole deployment would break Phase 2 preview URLs.
     vercelSso: false,
+    region: undefined,
+    withS3: false,
+    theme: "werft",
     rollback: true,
     yes: false,
     help: false,
@@ -133,6 +149,20 @@ export function parseArgs(argv: readonly string[]): ParseResult {
       options.status = value as AppStatus
       continue
     }
+    if (key === "region") {
+      if (!REGION_KEYS.includes(value as RegionKey)) {
+        return { ok: false, error: `--region must be one of: ${REGION_KEYS.join(", ")}` }
+      }
+      options.region = value as RegionKey
+      continue
+    }
+    if (key === "theme") {
+      if (!THEME_KEYS.includes(value as ThemeKey)) {
+        return { ok: false, error: `--theme must be one of: ${THEME_KEYS.join(", ")}` }
+      }
+      options.theme = value as ThemeKey
+      continue
+    }
     options[key] = value
   }
 
@@ -156,7 +186,7 @@ what it does, cheapest-to-undo first:
 options:
   --name <name>          app name; also the repo, Neon and Vercel project name
   --description <text>   one line, for the registry card
-  --dir <path>           where to write it (default: ./<name>)
+  --dir <path>           where to write it (default: ~/Documents/workspace/<name>)
   --template <url|path>  template to copy (default: ${DEFAULT_TEMPLATE})
   --stack a,b,c          stack badges (default: read from the template)
   --tags a,b,c           registry tags
@@ -167,6 +197,11 @@ options:
   --dry-run              do all local work, create no remote resources
   --no-deploy            stop after pushing environment variables
   --vercel-sso           put Vercel SSO in front of the whole deployment
+  --region <key>         where it lives: ${REGION_KEYS.join(" | ")} — one choice
+                         co-locating database, functions and bucket (default:
+                         each provider's own default)
+  --with-s3              provision a per-app S3 bucket and wire AWS env vars
+  --theme <name>         design theme: ${THEME_KEYS.join(" | ")} (default: werft)
   --skip-install         do not run pnpm install
   --skip-browsers        do not run playwright install chromium
   --no-rollback          on failure, print cleanup commands but change nothing

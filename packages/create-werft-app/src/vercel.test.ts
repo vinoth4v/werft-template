@@ -202,11 +202,21 @@ describe("readLinkedProject", () => {
 
 describe("getProjectSettings", () => {
   it("reads the setting back", async () => {
-    stubFetch(200, { rootDirectory: "apps/web", framework: "nextjs", ssoProtection: null }, [])
+    stubFetch(
+      200,
+      {
+        rootDirectory: "apps/web",
+        framework: "nextjs",
+        ssoProtection: null,
+        serverlessFunctionRegion: "fra1",
+      },
+      [],
+    )
     expect(await getProjectSettings(team, "tok")).toEqual({
       rootDirectory: "apps/web",
       framework: "nextjs",
       ssoProtection: null,
+      serverlessFunctionRegion: "fra1",
     })
   })
 
@@ -217,6 +227,7 @@ describe("getProjectSettings", () => {
       rootDirectory: null,
       framework: null,
       ssoProtection: null,
+      serverlessFunctionRegion: null,
     })
   })
 

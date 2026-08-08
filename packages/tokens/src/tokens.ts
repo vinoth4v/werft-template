@@ -22,6 +22,8 @@ const scale = {
   blue600: "#2563eb",
   red400: "#f87171",
   red600: "#dc2626",
+  green400: "#4ade80",
+  green600: "#16a34a",
 } as const
 
 /** Semantic colours. Each names a job, and carries a value per scheme. */
@@ -33,6 +35,10 @@ export const color = {
   border: { light: scale.zinc200, dark: scale.zinc800 },
   accent: { light: scale.blue600, dark: scale.blue400 },
   danger: { light: scale.red600, dark: scale.red400 },
+  // A third state distinct from accent and danger — health dots, "saved"
+  // banners. The marketplace grew this token first; the template carries it
+  // now so every theme and every scaffolded app has it from the start.
+  success: { light: scale.green600, dark: scale.green400 },
 } as const
 
 export const space = {
