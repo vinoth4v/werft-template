@@ -4,6 +4,7 @@ import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { Options } from "./args.ts"
 import { type ExecOptions, type ExecResult, exec, quote } from "./exec.ts"
+import { createAppAwsUser, deleteAppAwsUser } from "./iam.ts"
 import { Ledger, type Resource } from "./ledger.ts"
 import {
   createNeonProject,
@@ -419,12 +420,31 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
           cleanup: `aws s3api delete-bucket --bucket ${bucket} --region ${awsRegion}`,
           undo: async () => deleteBucket(bucket, awsRegion, creds),
         })
-        // The app reads these; the bucket is empty and private by default.
+
+        // A per-app IAM user scoped to exactly this bucket — so the app holds
+        // its own least-privilege key, never the admin key that made it. This
+        // is the whole point of "configured from Werft, never the console".
+        currentStep = "create scoped AWS user"
+        log.step("Minting a bucket-scoped AWS user for the app")
+        const awsUser = await createAppAwsUser(name, bucket, creds)
+        ledger.record({
+          what: `IAM user ${awsUser.userName}`,
+          cleanup: `aws iam delete-user --user-name ${awsUser.userName} (delete its access key and inline policy first)`,
+          undo: async () => deleteAppAwsUser(awsUser.userName, awsUser.accessKeyId, creds),
+        })
+
+        // The app reads these four. The bucket is empty and private; the key
+        // can touch this bucket and nothing else in the account.
         envValues.S3_BUCKET = bucket
         envValues.AWS_REGION = awsRegion
+        envValues.AWS_ACCESS_KEY_ID = awsUser.accessKeyId
+        envValues.AWS_SECRET_ACCESS_KEY = awsUser.secretAccessKey
         await upsertEnvLocal(webDir, envValues)
+        log.info(
+          `bucket ${bucket} + scoped IAM user ${awsUser.userName} — admin key never leaves the runner`,
+        )
         notes.push(
-          `S3 bucket ${bucket} created (empty, private) — the app has S3_BUCKET and AWS_REGION; give the runtime its own scoped AWS keys, do not reuse the admin key`,
+          `S3 ready: bucket ${bucket}, plus a bucket-scoped AWS user (${awsUser.userName}) whose key the app holds — the admin key was never copied into the app`,
         )
       }
     }
