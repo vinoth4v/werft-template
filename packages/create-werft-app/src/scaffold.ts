@@ -16,6 +16,7 @@ import {
   readLinkedProject,
   resolveVercelToken,
   SSO_ENABLED,
+  stableAliasUrl,
   updateProjectSettings,
 } from "./vercel.ts"
 import { NAME_PATTERN, renderWerftJson, type WerftJson } from "./werft-json.ts"
@@ -462,10 +463,16 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       currentStep = "deploy"
       log.step("Deploying to production")
       const deployed = await runner.remote("vercel", ["deploy", "--prod", "--yes"], { cwd: dir })
-      url = extractDeployUrl(deployed.stdout)
-      if (url === "" && !runner.isDryRun) {
-        notes.push("the deploy produced no URL — set werft.json url by hand")
+      // The stable alias, not the URL of this one deployment — Vercel
+      // deployments are immutable, so recording a specific one goes stale the
+      // moment the next deploy happens. extractDeployUrl still runs, only to
+      // confirm the deploy actually printed something rather than silently
+      // producing nothing.
+      const thisDeployment = extractDeployUrl(deployed.stdout)
+      if (thisDeployment === "" && !runner.isDryRun) {
+        notes.push("the deploy produced no URL — something may be wrong; check `vercel ls`")
       }
+      url = runner.isDryRun ? "" : stableAliasUrl(name)
     } else {
       notes.push("not deployed — run `vercel deploy --prod` when ready, then set werft.json url")
     }
