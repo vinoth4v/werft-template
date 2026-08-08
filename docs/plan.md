@@ -632,6 +632,42 @@ reasoning in plan.md and inherits the same workflow.
 
 ---
 
+## Production finally gets its migrations *(2026-08-09)*
+
+The gap that was always going to bite, and did on the first real build plan:
+nothing applied migrations to production. A PR adding one passed every gate
+*honestly* — `neon-preview-branch` gives each PR its own database branch and
+migrates it, so the preview genuinely worked — and then the merge deployed
+code querying a table production did not have. The gates could not catch it,
+because the only environment nobody migrated was the one nobody tested.
+
+`apps/web/scripts/vercel-build.ts` runs as Vercel's build (via the
+`vercel-build` script, which Vercel prefers over `build`), applying
+migrations first.
+
+**Production only, and that is the whole design.** The obvious version —
+migrate on every build — would have been worse than the gap. Vercel resolves
+a preview deployment's DATABASE_URL to the PR-scoped value when one exists
+and otherwise falls back to the preview-target value, which the scaffold sets
+to the production connection string. A branch pushed before its PR existed
+would therefore have migrated production from unreviewed code. Gating on
+`VERCEL_ENV` removes the possibility rather than trusting the fallback never
+to happen. Preview branch databases are already migrated by the PR workflow.
+
+A failing migration now fails the build, so the previous deployment keeps
+serving — the right direction to fail in, against an alternative where a
+successful deploy serves an app that errors on its first query.
+
+`pnpm build` is untouched and still needs no database, which is what keeps
+this repo buildable by anyone who clones it.
+
+**Caught while writing it:** the first version called `next build` directly
+and so skipped the token stylesheet, which would have deployed an app with no
+CSS custom properties — a missing build step that presents as a styling bug.
+It delegates to the app's own `build` script instead.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
