@@ -107,6 +107,12 @@ native build steps break fresh installs.
   PR's real Vercel preview URL.
 - Give every pull request its own Neon database branch, migrated and wired to
   its Vercel preview deployment, deleted when the PR closes.
+- Self-heal a preview branch that outlives its PR: a scheduled sweep
+  (`reap-stale-preview-branches.yml`, every 6 hours) catches what the
+  closed-event trigger can miss — confirmed on a real run: a PR auto-closed
+  by GitHub as superseded (identical `closed_at` to the PR that replaced it)
+  never fired `pull_request: closed` at all, and its Neon branch and Vercel
+  env leaked until this existed.
 
 ## Phase 2 repository secrets
 
