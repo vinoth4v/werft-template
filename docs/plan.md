@@ -486,14 +486,15 @@ any other resource. Lambda deliberately not provisioned — the fleet's one
 function is a bespoke artefact, not a per-app default; the honest move is
 the bucket every blob-storing app needs, not a guessed function.
 
-**Theme** (`--theme werft|madras|deck|nordlicht|tinte`): named themes in
+**Theme** (`--theme werft|madras|deck|nordlicht|tinte|kimi-earth|kimi-cocoa|
+`kimi-editorial`|`kimi-terminal`): named themes in
 `@werft/tokens` — same token *names*, different values, so a theme changes
 nothing in any component. madras and deck were sampled from the real
 running SruthiScribe and LoopDeck (screenshot → hex); nordlicht and tinte
 are designed directions. Written to `theme.json`, which the token build
 reads; absent means default, so the template and every pre-theme app build
 unchanged. The marketplace picker is visual, per the operator's explicit
-"I want the image of the design, not just text": five cards, each a
+"I want the image of the design, not just text": a card per theme, each a
 miniature render in that theme's own colours, not a name in a dropdown.
 
 **Default home** `~/Documents/workspace/<name>` for a human running the CLI

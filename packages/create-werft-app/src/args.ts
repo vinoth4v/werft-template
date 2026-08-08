@@ -4,7 +4,17 @@ import { APP_STATUSES, type AppStatus } from "./werft-json.ts"
 // Mirrors @werft/tokens' THEME_NAMES; duplicated because this package stays
 // zero-dependency and cannot import a workspace sibling at runtime. The
 // scaffold validates the copy against the template's real themes.ts anyway.
-export const THEME_KEYS = ["werft", "madras", "deck", "nordlicht", "tinte"] as const
+export const THEME_KEYS = [
+  "werft",
+  "madras",
+  "deck",
+  "nordlicht",
+  "tinte",
+  "kimi-earth",
+  "kimi-cocoa",
+  "kimi-editorial",
+  "kimi-terminal",
+] as const
 export type ThemeKey = (typeof THEME_KEYS)[number]
 
 export const DEFAULT_TEMPLATE = "https://github.com/vinoth4v/werft-template.git"
