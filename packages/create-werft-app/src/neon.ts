@@ -100,3 +100,27 @@ export async function deleteNeonProject(id: string, apiKey: string): Promise<boo
 export function neonDeleteCommand(id: string): string {
   return `curl -fsS -X DELETE -H "Authorization: Bearer $NEON_API_KEY" ${NEON_API}/projects/${id}`
 }
+
+/**
+ * The project id for an app's Neon project, found by its name.
+ *
+ * Retirement starts from the app's name; the id it needs was printed once,
+ * months ago, in a scaffold run nobody kept. Names are what the scaffold sets
+ * and what a human recognises, so the lookup happens here rather than asking
+ * the operator to go dig an id out of a console.
+ *
+ * Returns "" when there is no such project — already gone is not an error.
+ */
+export async function findNeonProjectId(name: string, apiKey: string): Promise<string> {
+  const response = await fetch(`${NEON_API}/projects`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  }).catch(() => null)
+  if (!response?.ok) return ""
+
+  const body = (await response.json().catch(() => null)) as {
+    projects?: { id?: unknown; name?: unknown }[]
+  } | null
+
+  const match = (body?.projects ?? []).find((project) => project.name === name)
+  return typeof match?.id === "string" ? match.id : ""
+}

@@ -1,0 +1,73 @@
+name: Request a feature
+
+# The marketplace's per-app "describe a change" box, made real.
+#
+# All it does is file an @claude issue in the app's own repo — and that is the
+# whole trick. The app already has claude.yml (inherited from this template) and
+# its own KOMPASS_TOKEN, so an issue mentioning @claude wakes Claude Code inside
+# that repo, where it can read the code, write a migration, and open a pull
+# request. It then meets the app's own five required checks, including a real
+# preview database and a browser test, before a human merges.
+#
+# It runs here rather than the marketplace calling GitHub directly, for the same
+# reason scaffolding does: the marketplace holds one dispatch credential and no
+# repository write access. Whether an app may be changed is decided by the
+# credentials on this repo, not by whatever the web app can reach.
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "App to change"
+        required: true
+        type: string
+      request:
+        description: "What to build — a sentence or a full plan; markdown is fine"
+        required: true
+        type: string
+      title:
+        description: "Short title for the issue"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GH_SCAFFOLD_TOKEN }}
+    steps:
+      - name: File it as an @claude issue in the app's repo
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          REQUEST: ${{ inputs.request }}
+          TITLE: ${{ inputs.title }}
+        run: |
+          set -euo pipefail
+          OWNER=$(gh api user -q .login)
+          SLUG="$OWNER/$APP_NAME"
+
+          # Fail loudly on a name that is not an app: a typo would otherwise
+          # open an issue in whatever repo happens to match.
+          if ! gh api "repos/$SLUG/contents/werft.json" --silent 2>/dev/null; then
+            echo "::error::$SLUG has no werft.json — that is not an app Werft built"
+            exit 1
+          fi
+
+          # Written through a file: a request is multi-line markdown, and
+          # interpolating it into a shell argument mangles backticks and quotes.
+          {
+            printf '@claude %s\n\n' "$REQUEST"
+            printf -- '---\n'
+            printf 'Requested from the Werft marketplace.\n\n'
+            printf 'Work on a branch and open a pull request — never push to `main`.\n'
+            printf 'If this needs a schema change, add a Drizzle migration rather than\n'
+            printf 'editing an applied one; the PR gets its own Neon branch to prove it\n'
+            printf 'against. All five checks must pass, and a human merges.\n'
+          } > /tmp/request.md
+
+          SUBJECT="${TITLE:-Change request}"
+          URL=$(gh issue create --repo "$SLUG" --title "$SUBJECT" --body-file /tmp/request.md)
+          echo "Filed: $URL"
+          echo "### Claude is on it" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"

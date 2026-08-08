@@ -1,0 +1,109 @@
+name: Retire app
+
+# The marketplace's "retire" button, made real — the mirror of scaffold-app.yml.
+# It runs here because this repo holds every credential the teardown needs
+# (Neon, Vercel, AWS, the registry token); the marketplace only gets to ask.
+#
+# The confirmation is the app's name typed back, checked in the workflow as well
+# as in the form. A dispatch can be sent by anything holding the token, so the
+# guard cannot live only in the browser.
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "App to retire — everything it owns is removed"
+        required: true
+        type: string
+      confirm:
+        description: "Type the app name again to confirm"
+        required: true
+        type: string
+      delete_repo:
+        description: "Also delete the GitHub repository (the code is unrecoverable)"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "List what would be removed, remove nothing"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Needs the delete_repo scope for --delete-repo; the same token that
+      # creates repositories for the scaffold.
+      GH_TOKEN: ${{ secrets.GH_SCAFFOLD_TOKEN }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      WERFT_REGISTRY_TOKEN: ${{ secrets.WERFT_REGISTRY_TOKEN }}
+      # Only used when the app had a bucket. Absent is fine: the teardown
+      # reports S3 as "skipped" rather than failing an app that never had one.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Refuse a mismatched confirmation
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$APP_NAME" != "$CONFIRM" ]; then
+            echo "::error::confirm ($CONFIRM) does not match app_name ($APP_NAME) — nothing was touched"
+            exit 1
+          fi
+          # A typo here would delete the wrong thing, and these two are the
+          # only names that must never be retired by this button.
+          case "$APP_NAME" in
+            werft-template|werft-marketplace)
+              echo "::error::$APP_NAME is Werft itself, not an app it built — refusing"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install the Vercel CLI
+        run: npm install -g vercel@58
+
+      - name: Retire it
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+        run: |
+          set -euo pipefail
+          FLAGS=(--name "$APP_NAME" --confirm "$APP_NAME")
+          [ "${{ inputs.delete_repo }}" = "true" ] && FLAGS+=(--delete-repo)
+          [ "${{ inputs.dry_run }}" = "true" ] && FLAGS+=(--dry-run)
+          node --experimental-strip-types packages/create-werft-app/src/retire-cli.ts "${FLAGS[@]}"
+
+      # Runs even when the teardown reported leftovers, because that is exactly
+      # when the operator needs to be told. The issue lands here, in
+      # werft-template, since the app's own repo may no longer exist.
+      - name: Say what happened
+        if: always() && inputs.dry_run != true
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          OWNER=$(gh api user -q .login)
+          if [ "$OUTCOME" = "success" ]; then
+            TITLE="$APP_NAME retired"
+            BODY="Everything $APP_NAME owned has been removed: Vercel project, Neon database, any S3 bucket and scoped AWS user, and its registry row. See the run for the per-resource report."
+          else
+            TITLE="$APP_NAME was only partly retired"
+            BODY="Some resources survived. The run log lists exactly which and why — they are still costing money until dealt with. Every step is safe to repeat, so fixing the cause and re-running is the fastest path."
+          fi
+          gh issue create --repo "$OWNER/werft-template" \
+            --title "$TITLE" \
+            --body "$BODY
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --assignee "$OWNER"
