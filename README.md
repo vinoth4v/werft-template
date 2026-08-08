@@ -21,3 +21,5 @@ Everything is private by default — you land on `/login`.
 
 Conventions and hard rules live in [AGENTS.md](./AGENTS.md) (`CLAUDE.md` is a
 symlink to it).
+
+Scaffolded apps inherit this template's CI, preview pipeline, and Claude Code workflows automatically.
