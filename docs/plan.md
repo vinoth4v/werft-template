@@ -457,6 +457,59 @@ health-checked.
 
 ---
 
+## The scaffold got configurable — region, storage, look
+
+Four options the operator asked for, each validated against the real APIs
+before being built, then wired the whole way through: CLI flag → scaffold →
+`scaffold-app.yml` dispatch input → the marketplace's `/new` form. One
+implementation, two front doors, no drift (a test asserts the exact input
+set the workflow declares).
+
+**Region** (`--region us-east|eu-central|us-west`): one choice co-locates
+the database, the functions and the bucket, instead of three
+independently-defaulted regions. Every id was probed live — Neon by
+creating/deleting a project in each, Vercel by PATCHing
+`serverlessFunctionRegion` and reading it back. Omitted means each
+provider's own default; existing behaviour unchanged.
+
+**Storage, and the rule that shaped it — "I don't touch the AWS console."**
+`--with-s3` doesn't just make a bucket. It mints the app its *own* IAM user
+(`werft-<app>`) with an inline policy scoped to exactly that bucket's ARN,
+creates that user's access key, and hands the app *that* key. The admin key
+lives once, on the werft-template runner (set with `gh secret set`, never
+the console), and is never copied into any scaffolded app. Hand-rolled IAM
+SigV4 (`iam.ts`), zero dependencies like the S3 signer, and the scoping was
+proven the only way that counts: the app's key put/listed its own bucket
+and was **denied** listing all buckets or reading another app's bucket. The
+IAM user is in the rollback ledger, so a failed scaffold revokes it like
+any other resource. Lambda deliberately not provisioned — the fleet's one
+function is a bespoke artefact, not a per-app default; the honest move is
+the bucket every blob-storing app needs, not a guessed function.
+
+**Theme** (`--theme werft|madras|deck|nordlicht|tinte`): named themes in
+`@werft/tokens` — same token *names*, different values, so a theme changes
+nothing in any component. madras and deck were sampled from the real
+running SruthiScribe and LoopDeck (screenshot → hex); nordlicht and tinte
+are designed directions. Written to `theme.json`, which the token build
+reads; absent means default, so the template and every pre-theme app build
+unchanged. The marketplace picker is visual, per the operator's explicit
+"I want the image of the design, not just text": five cards, each a
+miniature render in that theme's own colours, not a name in a dropdown.
+
+**Default home** `~/Documents/workspace/<name>` for a human running the CLI
+— where every other app lives — while the runner keeps its throwaway
+checkout (pushed to GitHub, then discarded).
+
+**A lesson paid for twice:** `git reset --hard origin/main` with
+uncommitted work discards it. It ate the IAM layer once, silently, between
+a merge and a re-sync. The fix wasn't cleverness — it was *commit and push
+the branch before running anything that resyncs main*. The second time the
+same reset ran, the work was already on its pushed branch and survived
+untouched. Recovered fully, committed first, then proven live and cleaned
+to zero residue.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
