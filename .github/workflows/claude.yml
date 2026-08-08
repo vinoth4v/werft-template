@@ -13,10 +13,16 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  # A freshly opened issue whose body carries @claude counts too — this is
+  # how the marketplace's "first task" reaches a brand-new app: the scaffold
+  # workflow files the issue, nobody is around to comment on it, and without
+  # this trigger Claude never started (found live: the issue sat untouched).
+  issues:
+    types: [opened]
 
 jobs:
   claude:
-    if: contains(github.event.comment.body, '@claude')
+    if: contains(github.event.comment.body, '@claude') || contains(github.event.issue.body, '@claude')
     runs-on: ubuntu-latest
     permissions:
       contents: write
