@@ -572,6 +572,22 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // Both targets: production for the deployed app, preview so every PR
     // branch's deployment can authenticate and reach a database too, not just
     // the default DATABASE_URL a Neon-branch workflow overrides per PR later.
+    // What the app itself needs to reach a model at runtime. Distinct from the
+    // KOMPASS_TOKEN armed as a repository secret: that one is for CI, this one
+    // is read by the running app through src/kompass.ts. Set unconditionally,
+    // because whether a feature needs AI is decided long after scaffolding, and
+    // an app that never calls a model never reads them.
+    const kompassToken = await resolveSharedSecret("KOMPASS_TOKEN", "kompass-token")
+    if (kompassToken) {
+      envValues.KOMPASS_BASE_URL =
+        process.env.KOMPASS_BASE_URL ?? "https://kompass.vinoth4v.workers.dev"
+      envValues.KOMPASS_TOKEN = kompassToken
+    } else {
+      notes.push(
+        "no KOMPASS_TOKEN found, so the app cannot call a model at runtime — set it later with `vercel env add KOMPASS_TOKEN` if a feature needs one",
+      )
+    }
+
     currentStep = "push environment variables"
     log.step("Pushing environment variables to Vercel")
     for (const target of ["production", "preview"]) {

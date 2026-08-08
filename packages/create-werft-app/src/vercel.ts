@@ -170,7 +170,7 @@ export async function productionAliasUrl(
   token: string,
   orgId?: string,
 ): Promise<string> {
-  const query = orgId && orgId.startsWith("team_") ? `?teamId=${orgId}` : ""
+  const query = orgId?.startsWith("team_") ? `?teamId=${orgId}` : ""
   const response = await fetch(
     `https://api.vercel.com/v9/projects/${projectName}/domains${query}`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -297,7 +297,7 @@ export async function deleteVercelProject(
   token: string,
   orgId?: string,
 ): Promise<boolean> {
-  const query = orgId && orgId.startsWith("team_") ? `?teamId=${encodeURIComponent(orgId)}` : ""
+  const query = orgId?.startsWith("team_") ? `?teamId=${encodeURIComponent(orgId)}` : ""
   const response = await fetch(`${VERCEL_API}/v9/projects/${projectName}${query}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
