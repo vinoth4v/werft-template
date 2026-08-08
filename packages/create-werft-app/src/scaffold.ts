@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto"
 import { readFile, rm, stat, writeFile } from "node:fs/promises"
+import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import type { Options } from "./args.ts"
 import { type ExecOptions, type ExecResult, exec, quote } from "./exec.ts"
@@ -342,10 +343,18 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // ---- 9. Neon ---------------------------------------------------------
     currentStep = "create Neon project"
     log.step("Creating the Neon project")
+    // Captured for the CI-secrets step at the end, which needs them after
+    // these blocks' own scopes have closed.
+    let neonProjectId = ""
+    let vercelProjectId = ""
+    let vercelOrgId = ""
+    let vercelApiToken = ""
+
     if (runner.isDryRun) {
       log.info(`[dry-run] would POST https://console.neon.tech/api/v2/projects {"name":"${name}"}`)
     } else {
       const project = await createNeonProject(name, neonApiKey)
+      neonProjectId = project.id
       ledger.record({
         what: `Neon project ${project.id}`,
         cleanup: neonDeleteCommand(project.id),
@@ -416,6 +425,9 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
         )
       }
       log.info(`using the token from ${auth.source}`)
+      vercelProjectId = linked.projectId
+      vercelOrgId = linked.orgId
+      vercelApiToken = auth.token
 
       // Vercel applies SSO to every new project as a team-level default, so
       // clearing it is an explicit act on each one.
@@ -487,6 +499,85 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       await runner.local("git", ["push", "-q"], { cwd: dir })
     }
 
+    // ---- 13. arm the CI pipeline ------------------------------------------
+    // The workflows this app inherited (pr-checks, pr-cleanup, reap, registry
+    // upsert, claude) are dead without their secrets. Every value is in hand
+    // right now — setting them here is what makes "one command gives you a
+    // deployed app" include a pipeline that actually runs, instead of a repo
+    // whose CI fails on its first PR until someone wires it by hand.
+    currentStep = "set repository CI secrets"
+    log.step("Setting the repository's CI secrets")
+    const ciSecrets: Record<string, string> = {
+      NEON_API_KEY: neonApiKey,
+      NEON_PROJECT_ID: neonProjectId,
+      VERCEL_TOKEN: vercelApiToken,
+      VERCEL_PROJECT_ID: vercelProjectId,
+    }
+    // Personal-account projects must not send a teamId at all — same rule the
+    // Vercel API calls already follow.
+    if (vercelOrgId.startsWith("team_")) ciSecrets.VERCEL_ORG_ID = vercelOrgId
+
+    // Shared across every app, unlike the per-project values above. Sourced
+    // from the environment or ~/.config/werft/, never invented.
+    for (const [secretName, fileName] of [
+      ["WERFT_REGISTRY_TOKEN", "registry-token"],
+      ["KOMPASS_TOKEN", "kompass-token"],
+    ] as const) {
+      const value = await resolveSharedSecret(secretName, fileName)
+      if (value) ciSecrets[secretName] = value
+      else {
+        notes.push(
+          `${secretName} not found in the environment or ~/.config/werft/${fileName} — set it with: gh secret set ${secretName} --repo ${slug}`,
+        )
+      }
+    }
+
+    for (const [secretName, value] of Object.entries(ciSecrets)) {
+      if (runner.isDryRun) {
+        log.info(`[dry-run] would run: gh secret set ${secretName} --repo ${slug} (value on stdin)`)
+        continue
+      }
+      if (value === "") {
+        notes.push(`${secretName} had no value to set — the CI pipeline needs it`)
+        continue
+      }
+      // Value on stdin, never argv: argv is visible in process listings.
+      await runner.remote("gh", ["secret", "set", secretName, "--repo", slug], { input: value })
+    }
+
+    // ---- 14. protect main, last -------------------------------------------
+    // Last on purpose: required status checks reject direct pushes to main
+    // (GH006) even from the repo owner, and step 12 pushes to main. Public
+    // repos only — GitHub Free rejects this API on private repos outright.
+    currentStep = "protect main"
+    if (options.private) {
+      notes.push(
+        "branch protection not set: GitHub Free does not support required checks on a private repo — upgrade to Pro or make it public, then require gitleaks, typecheck, build, neon-preview-branch, preview-smoke",
+      )
+    } else {
+      log.step("Requiring the five checks on main")
+      const protection = JSON.stringify({
+        required_status_checks: {
+          strict: false,
+          // All five, and neon-preview-branch explicitly: preview-smoke only
+          // skips (not fails) when its dependency fails, and GitHub does not
+          // treat a skipped required check as blocking.
+          contexts: ["gitleaks", "typecheck", "build", "neon-preview-branch", "preview-smoke"],
+        },
+        enforce_admins: true,
+        required_pull_request_reviews: null,
+        restrictions: null,
+      })
+      await runner.remote(
+        "gh",
+        ["api", `repos/${slug}/branches/main/protection`, "-X", "PUT", "--input", "-"],
+        { input: protection },
+      )
+      if (!runner.isDryRun) {
+        notes.push("main is protected: every change from here on goes through a PR")
+      }
+    }
+
     return { ok: true, dir, url, notes }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
@@ -508,6 +599,22 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
 
     return { ok: false, failedAt: currentStep, reason, orphaned, notes }
   }
+}
+
+/**
+ * A secret shared across every Werft app, as opposed to the per-project ones
+ * the scaffold creates itself: environment variable first, then a file the
+ * operator keeps under ~/.config/werft/. Absent is fine — the caller notes it
+ * rather than failing, since a pipeline missing one secret degrades to
+ * exactly the manual step it always was.
+ */
+async function resolveSharedSecret(envName: string, fileName: string): Promise<string> {
+  const fromEnv = process.env[envName]
+  if (fromEnv) return fromEnv
+
+  return (
+    await readFile(join(homedir(), ".config", "werft", fileName), "utf8").catch(() => "")
+  ).trim()
 }
 
 /** A missing credential is fatal for a real run and merely noted for a dry one. */
