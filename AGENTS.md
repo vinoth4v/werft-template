@@ -60,6 +60,13 @@ pnpm create-app --help            # scaffold a new app from this template
   stylesheet, lockfile).
 - **Never write a raw colour, spacing, or font value into CSS.** Add a design
   token and reference it. A literal in a stylesheet is a token nobody can find.
+- **Never let the `@claude` workflow merge a pull request.** It opens or
+  updates one; a human merges, always, even when every gate is green. No step
+  in `claude.yml` may call `gh pr merge` or equivalent.
+- **Never give the `@claude` workflow the production database.** It gets
+  nothing beyond `KOMPASS_TOKEN` and the GitHub App's own repo permissions — no
+  `NEON_API_KEY`, no `DATABASE_URL`. Whatever it changes gets a real preview
+  database the normal way: `pr-checks.yml` already brands every PR with one.
 
 ## Blessed dependencies
 
@@ -131,6 +138,21 @@ would permanently block every PR here regardless of code quality. Verified by
 testing: a PR was genuinely refused by GitHub (`the base branch policy
 prohibits the merge`) with all four required, then merged cleanly once the
 required set here was narrowed to `gitleaks`, `typecheck`, `build`.
+
+## Phase 3 — remote Claude Code
+
+`@claude` in an issue or PR comment (`.github/workflows/claude.yml`) runs
+Claude Code headless in an Actions runner, authenticated as the Claude
+GitHub App — install it at github.com/apps/claude, scoped to whichever repos
+should get this. Needs one secret:
+
+| Secret | Where it comes from |
+|---|---|
+| `KOMPASS_TOKEN` | your Kompass deployment; same token works across every app, unlike the Phase 2 secrets, which are per-project |
+
+Commits from the App trigger `pr-checks.yml` normally — unlike the default
+`GITHUB_TOKEN`, whose commits GitHub deliberately does not re-trigger
+workflows on. A PR this opens gets real gate feedback with no extra wiring.
 
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.
