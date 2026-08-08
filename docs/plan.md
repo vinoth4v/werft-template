@@ -337,6 +337,62 @@ automate blindly, since it changes how you reach your own apps.
 
 ---
 
+## Full-validation pass *(2026-08-08, after all five phases)*
+
+A dedicated hunt for bugs and unfinished pieces across both repos, with every
+fix proven live. What it found, and the decisions made:
+
+**The scaffold now arms the CI it ships.** The biggest incomplete module was
+hiding in plain sight: `create-werft-app` copied five workflow files into
+every new app and set none of their secrets — a pipeline born broken until
+wired by hand, despite the scaffold holding every per-project value the
+moment provisioning finishes. It now sets `NEON_API_KEY`, `NEON_PROJECT_ID`,
+`VERCEL_TOKEN`, `VERCEL_PROJECT_ID` (plus `VERCEL_ORG_ID` for team projects
+only), reads the shared `WERFT_REGISTRY_TOKEN`/`KOMPASS_TOKEN` from the
+environment or `~/.config/werft/`, and applies five-check branch protection
+to public repos — protection deliberately last, since required checks reject
+the scaffold's own final push (the same GH006 hit earlier on the template).
+Secret values travel on stdin, never argv, where process listings could see
+them.
+
+**The first proof-run of that feature found its own race.** Secrets were
+initially set *after* the record-URL push — and that push triggers
+`registry-upsert.yml`, whose run started two seconds before
+`WERFT_REGISTRY_TOKEN` landed, skipped "gracefully," and left the fresh app
+silently unregistered. Timestamps in the run log made it undeniable
+(workflow start 14:32:34, secret set 14:32:36). Reordered: secrets before
+the push, protection alone last. Proof-run #2 confirmed end to end — the
+scaffolded app self-registered on the marketplace with its real URL, no
+manual step, then was retired through the registry's new removal endpoint
+and fully cleaned up. 104s, exit 0, both runs.
+
+**The registry got its missing half.** `DELETE /api/registry/apps/<name>`,
+same bearer token as upsert — without a removal path, a retired app's row
+lived forever with a red dot, which turns the anti-decay wall into noise.
+Proven live: 200 with the row removed, 404 on the repeat, gone from the UI.
+
+**Phase 5's last unbuilt item — the "new app" button — became `/new`**, and
+grew into the operator's ask for instructions all over the app: the scaffold
+command with a working copy button, the login page explaining the
+single-operator model and the real forgotten-password procedure (there is no
+reset flow, on purpose), empty states that say what to do next, a detail
+page that explains every field in words plus how to work on the app, and a
+site footer carrying the one-line mental model. All verified in a real
+browser, signed in, on production.
+
+**Smaller real bugs fixed along the way:** no favicon existed anywhere, and
+adding one exposed another instance of the gate-vs-ungated-path trap —
+Next serves `app/icon.svg` at a URL the closed-by-default matcher 307'd to
+`/login`, breaking the tab icon for anyone signed out (now exempted, with an
+e2e test, same as `api/registry` before it). Unknown health values rendered
+an unlabeled dot with an `undefined` tooltip (now degrade to words, with
+screen-reader text). Times rendered via `toLocaleString()`, whose output
+depended on which region Vercel scheduled the lambda in (now deterministic
+UTC plus a tested relative-time formatter). Tab titles said "Werft app"
+everywhere (now real titles per page).
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
