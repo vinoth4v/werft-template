@@ -1,0 +1,85 @@
+name: Claude Code — escalate
+
+# Manual escalation for the plan's ladder: gates stay red twice, re-run with a
+# stronger Kompass model. Deliberately workflow_dispatch, not automatic on CI
+# failure — you decide when this is worth spending a stronger model on.
+#
+# Modeled on Anthropic's own ci-failure-auto-fix.yml example: the action has
+# no branch/push logic of its own. This workflow checks out and creates the
+# branch itself in a plain `run:` step, then gives Claude explicit git tool
+# access — Claude commits and pushes as part of doing the work, guided by the
+# prompt. A new branch, not a direct push into the PR's own branch, matching
+# that same official example: an autonomous agent doesn't get to rewrite the
+# history of a branch you're already reviewing.
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number with failing checks"
+        required: true
+        type: number
+      model:
+        description: "Model to pin"
+        required: true
+        type: choice
+        options:
+          - kompass-hard
+          - kompass-fast
+          - kompass
+      instructions:
+        description: "What's failing and what to fix (paste the gate name + error)"
+        required: true
+        type: string
+
+jobs:
+  escalate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Check out the PR's branch
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ inputs.pr }}/head
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity for Claude's commits
+        run: |
+          git config --global user.email "claude[bot]@users.noreply.github.com"
+          git config --global user.name "claude[bot]"
+
+      - name: Create the escalation branch
+        id: branch
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          BRANCH_NAME="claude-escalate-pr${{ inputs.pr }}-${RUN_ID}"
+          git checkout -b "$BRANCH_NAME"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: https://kompass.vinoth4v.workers.dev
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
+        with:
+          prompt: |
+            PR #${{ inputs.pr }} has failing checks and needs a stronger model
+            than whatever ran automatically.
+
+            ${{ inputs.instructions }}
+
+            Fix the problem. Verify locally with this repo's real commands
+            (pnpm -r build, pnpm typecheck, pnpm test, as applicable) before
+            committing — do not report success without running them. Commit
+            and push your fix to this branch: ${{ steps.branch.outputs.branch_name }}.
+            Do not open a pull request yourself; the operator reviews this
+            branch against PR #${{ inputs.pr }} and merges by hand.
+          anthropic_api_key: ${{ secrets.KOMPASS_TOKEN }}
+          claude_args: >-
+            --model ${{ inputs.model }}
+            --allowedTools 'Edit,MultiEdit,Write,Read,Glob,Grep,LS,Bash(git:*),Bash(pnpm:*),Bash(gh:*)'
