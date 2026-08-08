@@ -9,6 +9,7 @@ import {
   normaliseExpiry,
   readLinkedProject,
   SSO_ENABLED,
+  stableAliasUrl,
   updateProjectSettings,
 } from "./vercel.ts"
 
@@ -106,6 +107,18 @@ describe("extractDeployUrl", () => {
 
   it("returns empty when there is no URL, rather than a fragment", () => {
     expect(extractDeployUrl("Error: build failed")).toBe("")
+  })
+})
+
+describe("stableAliasUrl", () => {
+  it("matches the alias Vercel actually assigns a project", () => {
+    // Confirmed against two real projects (werft-test-4, werft-marketplace):
+    // both serve https://<project-name>.vercel.app from their Aliases list.
+    expect(stableAliasUrl("werft-marketplace")).toBe("https://werft-marketplace.vercel.app")
+  })
+
+  it("needs no escaping for a name — NAME_PATTERN already guarantees valid subdomain characters", () => {
+    expect(stableAliasUrl("my-app-2")).toBe("https://my-app-2.vercel.app")
   })
 })
 

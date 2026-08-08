@@ -107,9 +107,26 @@ function scoped(path: string, project: LinkedProject): string {
  * Stops at quotes, commas and angle brackets as well as whitespace: the CLI
  * prints the URL inside JSON-ish context, and a greedy match swallowed the
  * closing `",` and wrote a malformed URL into werft.json.
+ *
+ * Kept for diagnostics — what the scaffold actually records is
+ * `stableAliasUrl`, below. This URL is a specific deployment's, and Vercel
+ * deployments are immutable: the next deploy leaves it pointing at a stale
+ * snapshot rather than at whatever is currently live.
  */
 export function extractDeployUrl(output: string): string {
   return /https:\/\/[^\s"'<>,)\]]+/.exec(output)?.[0] ?? ""
+}
+
+/**
+ * The stable alias Vercel assigns every project at creation, which every
+ * production deploy promotes to — confirmed against two real projects, both
+ * serving `https://<project-name>.vercel.app` from their Aliases list.
+ *
+ * `name` is already constrained by NAME_PATTERN to lowercase letters, digits
+ * and hyphens, which is exactly a valid subdomain — no transformation needed.
+ */
+export function stableAliasUrl(name: string): string {
+  return `https://${name}.vercel.app`
 }
 
 /**
