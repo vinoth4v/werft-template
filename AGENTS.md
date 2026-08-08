@@ -115,9 +115,22 @@ werft.json or any committed file.
 | `VERCEL_ORG_ID` | the Vercel team ID, only if the project belongs to a team |
 | `VERCEL_PROJECT_ID` | `.vercel/project.json` after `vercel link`, or the Vercel dashboard |
 
-Branch protection on `main` must separately mark the four checks
-(`gitleaks`, `typecheck`, `build`, `preview-smoke`) as required — the workflow
-produces the checks, but cannot make GitHub enforce them.
+Branch protection on `main` must separately mark the checks as required — the
+workflow produces them, but cannot make GitHub enforce them. Requires GitHub
+Pro on a private repo (Free rejects the API call outright); a public repo
+gets it for free.
+
+**Which checks to require differs by repo.** An app scaffolded from this
+template has its own Neon and Vercel projects, so all four
+(`gitleaks`, `typecheck`, `build`, `preview-smoke`) belong in
+`required_status_checks`. This template repo itself is never deployed — it
+has no Neon or Vercel project of its own — so `neon-preview-branch` always
+fails there for a structural reason (`missing required env`) and
+`preview-smoke` always skips. Requiring either on **this** repo's own `main`
+would permanently block every PR here regardless of code quality. Verified by
+testing: a PR was genuinely refused by GitHub (`the base branch policy
+prohibits the merge`) with all four required, then merged cleanly once the
+required set here was narrowed to `gitleaks`, `typecheck`, `build`.
 
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.
