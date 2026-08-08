@@ -163,5 +163,30 @@ of its own; the workflow checks out and creates the branch itself, and Claude
 commits and pushes using ordinary git commands, which is why `claude_args`
 explicitly allowlists `Bash(git:*)`.
 
+## Phase 4 — registry
+
+`.github/workflows/registry-upsert.yml` posts this app's own `werft.json` to
+the Werft registry (`werft-marketplace`'s `/api/registry/upsert`) on every
+merge to `main`. One secret:
+
+| Secret | Where it comes from |
+|---|---|
+| `WERFT_REGISTRY_TOKEN` | shared across every app, like `KOMPASS_TOKEN` — generate once, reuse everywhere |
+
+Skips gracefully, not a build failure, when the secret is absent — not every
+clone of this template will have registry access wired up.
+
+**Why an HTTP endpoint with a bearer token, not a shared database
+credential.** Every app's CI could instead hold `werft-marketplace`'s own
+`DATABASE_URL` and write directly. Rejected: that puts a write-capable
+credential to one app's production database in every other app's secrets,
+and gives every app the ability to write anything to that table, not just a
+valid `werft.json`. The endpoint validates what it accepts and is the only
+thing that ever touches that connection string.
+
+**Never hand-edit the `werft_app` table.** Populated by CI only, same rule
+as `werft.json` itself — a row that drifts from its app's own file is a bug
+in the upsert path, not something to patch by hand.
+
 Describe capabilities, not paths. File paths in agent context go stale and
 mislead; find the code by reading it.
