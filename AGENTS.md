@@ -134,16 +134,27 @@ Pro on a private repo (Free rejects the API call outright); a public repo
 gets it for free.
 
 **Which checks to require differs by repo.** An app scaffolded from this
-template has its own Neon and Vercel projects, so all four
-(`gitleaks`, `typecheck`, `build`, `preview-smoke`) belong in
-`required_status_checks`. This template repo itself is never deployed — it
-has no Neon or Vercel project of its own — so `neon-preview-branch` always
-fails there for a structural reason (`missing required env`) and
-`preview-smoke` always skips. Requiring either on **this** repo's own `main`
-would permanently block every PR here regardless of code quality. Verified by
-testing: a PR was genuinely refused by GitHub (`the base branch policy
-prohibits the merge`) with all four required, then merged cleanly once the
-required set here was narrowed to `gitleaks`, `typecheck`, `build`.
+template has its own Neon and Vercel projects, so **all five** —
+`gitleaks`, `typecheck`, `build`, `neon-preview-branch`, `preview-smoke` —
+belong in `required_status_checks`, not four. `neon-preview-branch` has to
+be listed explicitly and separately: `preview-smoke` depends on it via
+`needs:`, so when it fails, `preview-smoke` merely *skips* rather than
+fails — and GitHub does not treat a skipped required check as blocking.
+Requiring only `preview-smoke` therefore does not actually enforce anything
+about the database/preview pipeline at all. Found the hard way: a real,
+diagnosed, reproduced-4x migration bug merged into `main` anyway, because
+only `preview-smoke` was required and its skip read as "fine" to GitHub.
+
+This template repo itself is never deployed — it has no Neon or Vercel
+project of its own — so `neon-preview-branch` always fails there for a
+structural reason (`missing required env`) and `preview-smoke` always
+skips. Requiring either on **this** repo's own `main` would permanently
+block every PR here regardless of code quality. Verified by testing: a PR
+was genuinely refused by GitHub (`the base branch policy prohibits the
+merge`) with all four (of the ones that make sense here) required, then
+merged cleanly once the required set here was narrowed to `gitleaks`,
+`typecheck`, `build` — this repo's required set is correctly missing
+`neon-preview-branch` and `preview-smoke` both, not a mistake to fix.
 
 ## Phase 3 — remote Claude Code
 
