@@ -120,6 +120,16 @@ The PR pipeline (`.github/workflows/pr-checks.yml`, `pr-cleanup.yml`) needs
 these as GitHub Actions secrets on the app's repository. None of them belong in
 werft.json or any committed file.
 
+**`create-werft-app` sets all of these itself** at the end of a real run — it
+holds every per-project value the moment provisioning finishes, and reads the
+shared ones (`WERFT_REGISTRY_TOKEN`, `KOMPASS_TOKEN`) from the environment or
+`~/.config/werft/<name>`. It also applies branch protection (the five
+required checks) to public repos, deliberately as the last remote step:
+required checks reject direct pushes to `main` even from the owner, and the
+scaffold's own final commit pushes to `main`. The table below is what to set
+by hand only when a shared secret wasn't available at scaffold time — the
+run's notes say exactly which, with the exact command.
+
 | Secret | Where it comes from |
 |---|---|
 | `NEON_API_KEY` | console.neon.tech → Account → API keys |

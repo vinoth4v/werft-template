@@ -51,6 +51,10 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+input:hover {
+  border-color: var(--color-muted);
+}
+
 button {
   padding: var(--space-2) var(--space-4);
   font: inherit;
@@ -60,6 +64,28 @@ button {
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
+  transition:
+    filter 120ms ease,
+    transform 120ms ease;
+}
+
+/* brightness, not a second colour: hover stays derived from the one accent
+   token instead of quietly becoming a token nobody can find. */
+button:hover {
+  filter: brightness(1.08);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
 [role="alert"] {
