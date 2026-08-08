@@ -393,6 +393,70 @@ everywhere (now real titles per page).
 
 ---
 
+## Create-from-the-marketplace *(2026-08-08, evening)*
+
+The operator asked to merge werft-template into the marketplace so apps
+could be created from the UI, "highly configurable, including embedding
+claude-code cli."
+
+**Merge declined; the goal shipped anyway.** The plan's own top risk is the
+template becoming a framework project, and physically merging the repos
+would couple every scaffolded app's clone to the marketplace's code. What
+the goal actually required was orchestration, not merger: the marketplace's
+`/new` page is now a real form (name, description, operator email, tags,
+visibility, status, deploy and Vercel-SSO toggles, and a first task) whose
+server action dispatches `scaffold-app.yml` in werft-template — the same
+`create-werft-app` that runs in a terminal, running in an Actions runner.
+One scaffold implementation, two front doors, repos stay decoupled. The
+marketplace holds exactly one credential for the whole feature (a
+server-only dispatch token behind the session gate); Neon, Vercel and
+Kompass secrets never leave werft-template.
+
+**"Embedding claude-code" shipped in its honest form:** the first-task field
+becomes an `@claude` issue in the new repo the moment it exists, and Claude
+Code — headless in Actions, routed through Kompass via the token the runner
+itself armed — starts building before the tab is closed. An interactive CLI
+embedded in a web page was not a real deliverable and was not pretended at.
+
+**No password field, deliberately:** dispatch inputs are visible in the run
+log on a public repo. The form says so and points at `pnpm hash-password`;
+the CLI fold remains the way to set one at scaffold time.
+
+**Proven end to end with a real app born from the real form in a real
+browser:** dispatch banner → runner scaffolded repo + database + deploy +
+all seven secrets + five-check protection → the app self-registered on the
+marketplace with its true URL → the first-task issue produced a Claude
+branch containing exactly the requested line and nothing else — verified by
+diff — before being retired through the registry's own DELETE endpoint and
+full resource cleanup. Zero residue.
+
+**Three defects the live proof caught, all fixed the same hour:**
+1. A bare `git push` has no credentials on a runner (`gh auth setup-git` is
+   the line a laptop never needed) — and the failure doubled as the ledger's
+   first fully-automatic four-resource rollback in a foreign environment:
+   "Nothing was left behind."
+2. `claude.yml` only listened for comments, but the first-task issue is
+   filed by a workflow nobody comments on — Claude sat silent until the
+   trigger learned about `issues: opened` with `@claude` in the body.
+3. The Vercel CLI credential rotates roughly daily, and a repo secret copied
+   from it 403ed the same afternoon (`invalidToken`), briefly blocking a
+   merge until refreshed. `resolveVercelToken` now prefers a long-lived
+   operator token at `~/.config/werft/vercel-token`, then `VERCEL_TOKEN` in
+   the environment, and treats the CLI credential as the interactive-only
+   fallback it really is. **Open item, operator-only: mint a long-lived
+   token at vercel.com/account/tokens and drop it in that file — until
+   then, Vercel-touching CI re-breaks daily and needs the secret refreshed.**
+
+Also that evening: eleven more real apps backfilled into the registry at the
+operator's request (loopdeck, sruthiscribe, sruthiscribe-learn, adjutant,
+stagegrid, visufinanz, nayoniq-atlas, replforge, editkumpel,
+horizon-catalog, ontos) — every URL verified live before recording, real
+repo descriptions where they existed, the app's own page title where they
+didn't, and nothing invented anywhere. The wall now shows 17 apps, all
+health-checked.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
