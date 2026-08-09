@@ -1,0 +1,99 @@
+name: Merge a pull request
+
+# The marketplace's Merge button, made real.
+#
+# It runs here for the same reason scaffolding and retirement do: this repo holds
+# a token that can write to app repositories, and the marketplace holds one that
+# can only ask. A web app able to merge to main directly would be a much larger
+# thing to get right.
+#
+# **This does not weaken the gates, and the checks below are the reason.** The
+# button only appears in the marketplace when every check is green, but a
+# dispatch can be sent by anything holding the token, and a UI that has gone
+# stale is not an authorisation. So the gate state is read here, from GitHub,
+# immediately before merging — and a pending check is refused as firmly as a
+# failing one, because "not finished yet" is not "passed".
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "The app whose pull request to merge"
+        required: true
+        type: string
+      pr:
+        description: "Pull request number"
+        required: true
+        type: string
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GH_SCAFFOLD_TOKEN }}
+      APP_NAME: ${{ inputs.app_name }}
+      PR: ${{ inputs.pr }}
+    steps:
+      - name: Refuse anything that is not an app Werft built
+        run: |
+          set -euo pipefail
+          OWNER=$(gh api user -q .login)
+          SLUG="$OWNER/$APP_NAME"
+          echo "SLUG=$SLUG" >> "$GITHUB_ENV"
+
+          case "$APP_NAME" in
+            werft-template|werft-marketplace)
+              echo "::error::$APP_NAME is Werft itself. Merge its pull requests on GitHub."
+              exit 1
+              ;;
+          esac
+          if ! gh api "repos/$SLUG/contents/werft.json" --silent 2>/dev/null; then
+            echo "::error::$SLUG has no werft.json — not an app Werft built"
+            exit 1
+          fi
+
+      - name: Read the gates, now, from GitHub
+        run: |
+          set -euo pipefail
+
+          STATE=$(gh pr view "$PR" --repo "$SLUG" --json state,mergeable,isDraft \
+                  -q '"\(.state) \(.mergeable) \(.isDraft)"')
+          echo "pull request: $STATE"
+          read -r PR_STATE MERGEABLE DRAFT <<< "$STATE"
+
+          if [ "$PR_STATE" != "OPEN" ]; then
+            echo "::error::pull request #$PR is $PR_STATE, not open"
+            exit 1
+          fi
+          if [ "$DRAFT" = "true" ]; then
+            echo "::error::pull request #$PR is a draft"
+            exit 1
+          fi
+          if [ "$MERGEABLE" != "MERGEABLE" ]; then
+            echo "::error::pull request #$PR is $MERGEABLE — it likely needs a rebase"
+            exit 1
+          fi
+
+          # Every check, with its conclusion. A skipped check is allowed: the
+          # template's own repository legitimately skips preview-smoke, and an
+          # app can too when a job's dependency did not run.
+          CHECKS=$(gh api "repos/$SLUG/commits/$(gh pr view "$PR" --repo "$SLUG" -q .headRefOid --json headRefOid)/check-runs" \
+                     --jq '.check_runs[] | "\(.name)=\(.status):\(.conclusion // "none")"')
+          echo "$CHECKS" | sed 's/^/  /'
+
+          BAD=$(echo "$CHECKS" | grep -vE '=completed:(success|skipped|neutral)$' || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::not every check has passed:"
+            echo "$BAD" | sed 's/^/  /'
+            echo "::error::Refusing. A pending check is not a passed one."
+            exit 1
+          fi
+
+      - name: Merge it
+        run: |
+          set -euo pipefail
+          # Squash, matching how every other pull request in this fleet lands,
+          # and delete the branch so the sweep does not later offer it again.
+          gh pr merge "$PR" --repo "$SLUG" --squash --delete-branch
+          echo "merged #$PR into main; the deploy applies migrations before building" \
+            >> "$GITHUB_STEP_SUMMARY"

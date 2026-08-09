@@ -817,6 +817,31 @@ insisting on `docs/`.
 
 ---
 
+## Merging from where you already are *(2026-08-09)*
+
+The complaint: a change asked for in the marketplace gets built, goes green,
+and then sits — because merging meant going to GitHub. The work looked
+finished and wasn't live.
+
+The tempting fix is auto-merge, and it is the one thing the rules forbid:
+nothing reaches production without a human. Offered as three options, the
+operator chose the one that removes the friction without removing the human —
+a Merge button on the app's own page, shown only when every gate is green.
+
+**The workflow does not trust the button.** It runs in this repo, reads the
+gate state from GitHub immediately before merging, and refuses on anything that
+is not completed-and-passing. A pending check is refused exactly as firmly as a
+failing one, because "not finished yet" is not "passed" — and a UI that has
+gone stale is not an authorisation. It also refuses the two Werft repos, and
+anything without a werft.json.
+
+Skipped and neutral checks count as fine, deliberately: this fleet has
+legitimate skips (`preview-smoke` skips when its Neon dependency does not run),
+and treating a skip as failure would make the button permanently unavailable
+for reasons unrelated to the change.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
