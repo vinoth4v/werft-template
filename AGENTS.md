@@ -51,7 +51,16 @@ pnpm create-app --help            # scaffold a new app from this template
   run fails and waits: `claude-escalate.yml` is the manual way back onto the
   gateway.
 - **Never end a build session without writing down what you did and why.**
-  Two documents, and the split matters: `docs/ARCHITECTURE.md` describes the
+  Three documents, and the split matters — each answers a question the others
+  do not.
+
+  `README.md` is the front door, and the only one read by someone who knows
+  nothing: what this is, what works today, what does not, how to run it, how to
+  change it. GitHub shows it on the repository's landing page, so a thin README
+  makes a finished app look unbuilt. It is rewritten as features land — if the
+  app can do something it could not last session, the README says so.
+
+  Then the two deeper ones: `docs/ARCHITECTURE.md` describes the
   app as it is *now* — purpose, domain model, data model, surfaces, external
   services, decisions in force, known gaps — and is rewritten as the design
   changes. `docs/SESSIONS.md` is append-only history: one entry per session
@@ -66,8 +75,10 @@ pnpm create-app --help            # scaffold a new app from this template
   agent — can find the data model without reading the prose, and so two sessions
   do not invent two structures.
 
-  A pull request that changes behaviour and updates neither document is
-  incomplete, and `docs` in the PR checks says so.
+  A pull request that changes behaviour and updates none of the three is
+  incomplete, and `docs` in the PR checks says so. Eleven kilobytes of
+  architecture beside a six-line README is the failure this is written to
+  prevent: everything explained except to the person arriving.
 - **Never leave the app behind a link on the placeholder home page.** The
   template ships `/` as a stub that says "replace this page with the app you
   actually meant to build". Replace it. Building the real surface at `/map` or

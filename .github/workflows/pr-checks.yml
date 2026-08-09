@@ -96,12 +96,12 @@ jobs:
           # SESSIONS.md, while werft-template keeps its own reasoning in
           # docs/plan.md. The rule is "write down what you did", not "use these
           # exact two filenames in every repo that inherits this workflow".
-          if echo "$CHANGED" | grep -qE '^docs/.*\.md$'; then
+          if echo "$CHANGED" | grep -qE '^docs/.*\.md$|^README\.md$'; then
             echo "source changed and the docs were updated"
             exit 0
           fi
 
-          echo "::error::Source changed but docs/ARCHITECTURE.md and docs/SESSIONS.md did not. Describe the app as it now is in ARCHITECTURE.md, and append what you decided and why to SESSIONS.md. See AGENTS.md."
+          echo "::error::Source changed but no documentation did. README.md is the front door (what it is, what works); docs/ARCHITECTURE.md is how it works now; docs/SESSIONS.md is why. Describe the app as it now is in ARCHITECTURE.md, and append what you decided and why to SESSIONS.md. See AGENTS.md."
           exit 1
 
   neon-preview:

@@ -788,6 +788,35 @@ step.
 
 ---
 
+## The front door was the thin part *(2026-08-09)*
+
+The session-documentation rule worked, and produced the wrong shape. trip-friend
+came back with eleven kilobytes of `ARCHITECTURE.md` and six of `SESSIONS.md`,
+both genuinely good — beside a twenty-line README that said little more than
+`pnpm install`. GitHub shows the README on the landing page, so a finished app
+looked unbuilt to the only person the README exists for: someone arriving who
+knows nothing.
+
+The mistake was naming two documents and leaving the third to the scaffold's
+stub. Three documents, three questions:
+
+- **README.md** — what is this, does it work, what can I do with it now
+- **docs/ARCHITECTURE.md** — how it works, for someone about to change it
+- **docs/SESSIONS.md** — why past changes were made
+
+The README is now seeded with its sections already present, because an empty
+heading gets filled and an absent one does not. Its second section — *what works
+and what does not* — is the one that earns its place: it stops a reader
+mistaking a deliberate gap for a bug, and stops the next session rebuilding
+something that was left out on purpose.
+
+Named in all three places a rule has to exist to be real: the hard rule in
+AGENTS.md, the instruction in the issue body Claude reads first, and the `docs`
+check, which now accepts a README-only change as documentation rather than
+insisting on `docs/`.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |
