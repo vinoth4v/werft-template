@@ -722,6 +722,45 @@ by any app scaffolded before this existed — behaves exactly as before.
 
 ---
 
+## Three bugs the first two real apps exposed *(2026-08-09)*
+
+The operator's instruction was the right one: fix these in the harness, not in
+the app that happened to reveal them.
+
+**Finished work could stay invisible.** Claude built an entire app for
+trip-friend — 41 files, tests, its own verification — pushed the branch, and
+stopped without opening a pull request. Its closing comment linked to the
+branch, so from outside nothing appeared to have happened, and production went
+on serving the template while completed work sat where nobody would look. The
+instructions did ask for a pull request; asking is not a mechanism. The
+15-minute sweep now also opens one for any `claude/*` branch that is ahead of
+the default branch and has none, closing the issue it came from.
+
+**The app could hide behind a link.** world-watch built its dashboard at `/map`
+and left the template's placeholder at `/` with a link to it — so the
+production URL still read "replace this page with the app you actually meant
+to build", which is indistinguishable from nothing having been built. Now a
+hard rule, in AGENTS.md and in the issue body Claude reads first: put the app
+at `/`; if a route needs its own address, `/` redirects to it.
+
+**Every preview was unenterable.** The scaffold pushed environment variables
+with `vercel env add KEY preview --force`, which ran without error and created
+production entries only. So every app's preview deployment lacked AUTH_SECRET,
+WERFT_USER_EMAIL and WERFT_PASSWORD_HASH, and signing in returned "There was a
+problem with the server configuration". `preview-smoke` never caught it: it
+checks that the login page renders, not that a login works. Variables now go
+through the API, one call per variable covering both targets, and a refusal
+fails the scaffold instead of producing an app that cannot read its own
+configuration.
+
+Also settled the standing Vercel-token item, the hard way: the CLI credential
+expired mid-session at 23:01 UTC and took every app's PR pipeline with it
+(`invalidToken` on the Vercel API). A durable token now exists at
+`~/.config/werft/vercel-token`, which `resolveVercelToken` has preferred since
+it was written — it simply had no file to find.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |

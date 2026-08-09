@@ -183,6 +183,9 @@ jobs:
             printf '%s\n' "$BUILD_PLAN"
             printf '\n---\n'
             printf 'Filed automatically by the Werft create-app form. Work on a branch and open a pull request; a human merges.\n\n'
+            printf 'Put the app at `/`. The template ships a placeholder home page that\n'
+            printf 'says to replace it — replace it, rather than building elsewhere and linking\n'
+            printf 'from it, or the production URL still shows a placeholder.\n\n'
             printf 'Fill in `docs/ARCHITECTURE.md` as you go — it is seeded with empty headings —\n'
             printf 'and append to `docs/SESSIONS.md` what you decided and why. See AGENTS.md.\n'
           } > /tmp/plan.md
