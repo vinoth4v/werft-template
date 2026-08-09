@@ -186,6 +186,10 @@ jobs:
             printf 'Put the app at `/`. The template ships a placeholder home page that\n'
             printf 'says to replace it — replace it, rather than building elsewhere and linking\n'
             printf 'from it, or the production URL still shows a placeholder.\n\n'
+            printf 'Update `README.md` too — it is the front door and the only document\n'
+            printf 'read by someone who knows nothing: what this is, what works today, what\n'
+            printf 'does not. A six-line README beside a long architecture doc makes finished\n'
+            printf 'work look unbuilt.\n\n'
             printf 'Fill in `docs/ARCHITECTURE.md` as you go — it is seeded with empty headings —\n'
             printf 'and append to `docs/SESSIONS.md` what you decided and why. See AGENTS.md.\n'
           } > /tmp/plan.md
