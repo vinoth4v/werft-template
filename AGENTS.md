@@ -68,6 +68,13 @@ pnpm create-app --help            # scaffold a new app from this template
 
   A pull request that changes behaviour and updates neither document is
   incomplete, and `docs` in the PR checks says so.
+- **Never leave the app behind a link on the placeholder home page.** The
+  template ships `/` as a stub that says "replace this page with the app you
+  actually meant to build". Replace it. Building the real surface at `/map` or
+  `/dashboard` and linking to it from the stub means the production URL still
+  shows a placeholder — which reads, correctly, as "nothing was built". If a
+  route genuinely needs its own address, `/` redirects to it; the operator
+  should never have to click past a welcome page to reach their own app.
 - **Never edit a migration that has been applied.** Migrations are append-only.
   Fix forward with a new one.
 - **Never read secrets at module scope.** Environment access is lazy so that

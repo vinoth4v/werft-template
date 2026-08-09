@@ -1,4 +1,4 @@
-name: Claude retry
+name: Claude sweep
 
 # Re-runs a failed @claude job every 15 minutes, so hitting the subscription's
 # usage limit costs a delay instead of the work.
@@ -93,5 +93,68 @@ jobs:
               # running. Not a failure of this sweep; the next one will look
               # again.
               echo "- \`$ID\` could not be re-run; will look again in 15 minutes" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+  # ---- work that finished but was never offered ---------------------------
+  # The worst failure this harness has had: Claude built an entire app — 41
+  # files, tests, its own verification — pushed the branch, and stopped without
+  # opening a pull request. Its closing comment linked to the branch, so from
+  # the outside it looked like nothing had happened at all, and production went
+  # on serving the template while finished work sat in a branch nobody knew to
+  # look at.
+  #
+  # The instructions do ask for a pull request. Asking is not a mechanism.
+  open-prs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Open a pull request for any finished branch that lacks one
+        run: |
+          set -euo pipefail
+
+          # Claude's branches are named by the action, so they are recognisable
+          # without a marker.
+          BRANCHES=$(gh api "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name' \
+                     | grep -E '^claude/' || true)
+          if [ -z "$BRANCHES" ]; then
+            echo "no claude branches" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          DEFAULT=$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef -q .defaultBranchRef.name)
+
+          for BRANCH in $BRANCHES; do
+            # An open or merged PR means it was already offered; nothing to do.
+            EXISTING=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state all --json number --jq 'length')
+            if [ "$EXISTING" != "0" ]; then continue; fi
+
+            AHEAD=$(gh api "repos/$GITHUB_REPOSITORY/compare/$DEFAULT...$BRANCH" --jq .ahead_by 2>/dev/null || echo 0)
+            if [ "${AHEAD:-0}" = "0" ]; then
+              echo "$BRANCH has no commits of its own — leaving it"
+              continue
+            fi
+
+            # The issue number is in the branch name, so the pull request can
+            # close the request that produced it.
+            ISSUE=$(printf '%s' "$BRANCH" | sed -nE 's#^claude/issue-([0-9]+).*#\1#p')
+            SUBJECT=$(gh api "repos/$GITHUB_REPOSITORY/commits/$BRANCH" --jq '.commit.message' | head -1)
+
+            {
+              printf 'Opened by the sweep, not by Claude: this branch had %s commit(s) and no\n' "$AHEAD"
+              printf 'pull request, which means finished work was sitting where nobody would\n'
+              printf 'look for it while production served something older.\n\n'
+              printf 'Read it as you would any other pull request — the gates run against it,\n'
+              printf 'and it needs a human to merge.\n'
+              if [ -n "$ISSUE" ]; then printf '\nCloses #%s\n' "$ISSUE"; fi
+            } > /tmp/body.md
+
+            if gh pr create --repo "$GITHUB_REPOSITORY" --base "$DEFAULT" --head "$BRANCH" \
+                 --title "${SUBJECT:-Work from $BRANCH}" --body-file /tmp/body.md; then
+              echo "- opened a pull request for \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- could not open one for \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
             fi
           done

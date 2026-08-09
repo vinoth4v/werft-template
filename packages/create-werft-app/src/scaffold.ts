@@ -12,6 +12,7 @@ import {
   neonDeleteCommand,
   verifyNeonApiKey,
 } from "./neon.ts"
+import { setVercelEnv } from "./operator-password.ts"
 import { REGIONS } from "./regions.ts"
 import { createBucket, deleteBucket, resolveAwsCredentials } from "./s3.ts"
 import {
@@ -596,12 +597,29 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
 
     currentStep = "push environment variables"
     log.step("Pushing environment variables to Vercel")
-    for (const target of ["production", "preview"]) {
-      for (const [key, value] of Object.entries(envValues)) {
-        await runner.remote("vercel", ["env", "add", key, target, "--force"], {
-          cwd: dir,
-          input: value,
-        })
+    // Set through the API rather than `vercel env add`, one call per variable
+    // covering both targets.
+    //
+    // The CLI version ran without error and created production entries only.
+    // Every app scaffolded that way had a preview deployment missing
+    // AUTH_SECRET, WERFT_USER_EMAIL and WERFT_PASSWORD_HASH, so signing into a
+    // preview failed with "There was a problem with the server configuration"
+    // — and preview-smoke never caught it, because it checks that the login
+    // page renders, not that a login works.
+    //
+    // setVercelEnv also clears any existing entry for the key first, which is
+    // what keeps one variable from ending up as two rows with different
+    // targets and different values.
+    for (const [key, value] of Object.entries(envValues)) {
+      if (runner.isDryRun) {
+        log.info(`[dry-run] would set ${key} for production and preview`)
+        continue
+      }
+      const ok = await setVercelEnv(name, key, value, vercelApiToken)
+      if (!ok) {
+        throw new StepFailure(
+          `Vercel refused the environment variable ${key} — the app would deploy unable to read it`,
+        )
       }
     }
 
