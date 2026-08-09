@@ -761,6 +761,33 @@ it was written — it simply had no file to find.
 
 ---
 
+## The preview gate was passing on luck *(2026-08-09)*
+
+A pull request that changed one page failed `preview-smoke` with every route
+answering 500, and the change was innocent. The cause is a race that had been
+there since the preview pipeline was written.
+
+Vercel starts building a preview the moment a branch is pushed.
+`neon-preview-branch` then creates the Neon branch, migrates it, and sets the
+branch-scoped `DATABASE_URL` that points at it. On a real run: deployment built
+at **05:23:17**, variable set at **05:23:42**. A deployment built in that
+window has no `DATABASE_URL` at all — deliberately, because the only value
+available to serve as an unscoped preview fallback would be production's, and
+a preview quietly reading the production database is a much worse bug than a
+missing variable. So `env()` throws and every page 500s.
+
+Which means `preview-smoke` has been failing and passing on timing, and a
+failure said nothing about the change under test. Worse, the failure looks like
+the author's fault.
+
+The fix is in the script that causes it: after setting the variable, any
+deployment for that branch which predates it is redeployed. It reports rather
+than throws when it cannot — a preview that will not rebuild is the smoke
+test's business, and failing the database job for it would blame the wrong
+step.
+
+---
+
 ## Build order, honestly
 
 | Weeks | Focus |

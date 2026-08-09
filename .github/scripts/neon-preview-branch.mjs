@@ -188,6 +188,76 @@ async function create() {
   await run("pnpm", ["--filter", "web", "run", "db:migrate"], { DATABASE_URL: uri })
 
   await upsertVercelPreviewEnv("DATABASE_URL", uri)
+
+  // Vercel starts building the preview the moment the branch is pushed, which
+  // is before this job has finished creating the database and setting the
+  // variable that points at it. A deployment built in that window has no
+  // DATABASE_URL at all — there is deliberately no unscoped preview fallback,
+  // because the only value available to be a fallback would be production's —
+  // so env() throws and every page answers 500. preview-smoke then fails for a
+  // reason that has nothing to do with the change being tested.
+  //
+  // Measured on a real run: deployment built at 05:23:17, variable set at
+  // 05:23:42. Twenty-five seconds, and it had been passing on luck.
+  //
+  // So any deployment for this branch that predates the variable is rebuilt.
+  await redeployStalePreview()
+}
+
+/**
+ * Redeploys the branch's newest preview if it was built before the environment
+ * variable existed.
+ *
+ * Deliberately quiet about failure: a preview that cannot be redeployed is a
+ * problem for the smoke test to report, and turning it into a failure here
+ * would fail the database job for something the database job did not do.
+ */
+async function redeployStalePreview() {
+  const url = new URL("https://api.vercel.com/v6/deployments")
+  url.searchParams.set("projectId", env.VERCEL_PROJECT_ID)
+  url.searchParams.set("limit", "20")
+  if (env.VERCEL_ORG_ID) url.searchParams.set("teamId", env.VERCEL_ORG_ID)
+
+  const listed = await fetch(url, {
+    headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` },
+  }).catch(() => null)
+  if (!listed?.ok) {
+    console.log("could not list deployments — leaving the preview alone")
+    return
+  }
+
+  const body = await listed.json().catch(() => null)
+  const mine = (body?.deployments ?? []).filter(
+    (deployment) => deployment?.meta?.githubCommitRef === env.GIT_BRANCH,
+  )
+  const newest = mine[0]
+  if (!newest) {
+    console.log("no preview deployment for this branch yet — it will build with the variable set")
+    return
+  }
+
+  const redeploy = await fetch(
+    `https://api.vercel.com/v13/deployments${env.VERCEL_ORG_ID ? `?teamId=${env.VERCEL_ORG_ID}` : ""}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.VERCEL_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: newest.name,
+        deploymentId: newest.uid,
+        target: "preview",
+        meta: { werftReason: "rebuilt after its database variable was set" },
+      }),
+    },
+  ).catch(() => null)
+
+  console.log(
+    redeploy?.ok
+      ? `redeployed ${newest.url} so it can read DATABASE_URL`
+      : `could not redeploy ${newest.url}; the smoke test will say so`,
+  )
 }
 
 async function del() {
