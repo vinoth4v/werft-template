@@ -76,10 +76,14 @@ on:
         options: [werft, madras, deck, nordlicht, tinte, kimi-earth, kimi-cocoa, kimi-editorial, kimi-terminal]
         default: werft
       model:
-        description: "Which model builds the plan — blank uses the subscription's default"
+        description: "Which model builds the plan — blank uses the subscription's default; deepseek routes through the Kompass gateway instead"
         required: false
         type: choice
-        options: ["", opus, sonnet, haiku]
+        # A choice input is an allowlist GitHub enforces at dispatch time: a
+        # value missing from this list is a 422, not a fallback. So it has to
+        # stay in step with the marketplace's own picker — a model offered
+        # there and absent here is an option that cannot be chosen at all.
+        options: ["", opus, sonnet, haiku, deepseek]
         default: ""
       build_plan:
         description: "Build plan — filed as an @claude issue so Claude Code starts building immediately. Paste the whole plan; markdown is fine"

@@ -30,10 +30,12 @@ on:
         type: string
         default: ""
       model:
-        description: "Which model builds it — blank uses the subscription's default"
+        description: "Which model builds it — blank uses the subscription's default; deepseek routes through the Kompass gateway instead"
         required: false
         type: choice
-        options: ["", opus, sonnet, haiku]
+        # See scaffold-app.yml: GitHub enforces this list at dispatch time, so
+        # it has to match the marketplace's picker or the option 422s.
+        options: ["", opus, sonnet, haiku, deepseek]
         default: ""
 
 jobs:
