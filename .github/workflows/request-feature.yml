@@ -30,12 +30,38 @@ on:
         type: string
         default: ""
       model:
-        description: "Which model builds it — blank uses the subscription's default; deepseek routes through the Kompass gateway instead"
+        description: "Which model builds it — blank uses the subscription's default; kompass* routes through the gateway; the rest pin one gateway model"
         required: false
         type: choice
         # See scaffold-app.yml: GitHub enforces this list at dispatch time, so
         # it has to match the marketplace's picker or the option 422s.
-        options: ["", opus, sonnet, haiku, deepseek]
+        options:
+          - ""
+          - opus
+          - sonnet
+          - haiku
+          # Routed: the gateway picks and can fall back across its chain.
+          - kompass
+          - kompass-fast
+          - kompass-simple
+          - kompass-agentic
+          - kompass-hard
+          - kompass-longctx
+          # Pinned: exactly one model, no fallback at all.
+          - deepseek
+          - deepseek-1m
+          - minimax-m3
+          - nemotron-ultra
+          - nemotron-ultra-free
+          - glm-5.2
+          - gemini-3.7-flash
+          - devstral
+          - codestral
+          - laguna-s
+          - big-pickle
+          - mimo
+          - north-mini-code
+          - step-3.7-flash
         default: ""
 
 jobs:

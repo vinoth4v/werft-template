@@ -69,52 +69,92 @@ jobs:
         run: |
           set -euo pipefail
           CHOICE=$(printf '%s' "$ISSUE_BODY" | grep -oE 'werft:model=[a-z0-9.-]+' | head -1 | cut -d= -f2 || true)
-          # Allowlisted rather than passed through: this value becomes a command
-          # argument, and an issue body is text anyone with write access can edit.
-          # The allowlist is also why the marketplace sends a short token like
-          # `deepseek` rather than the full pinned name — the grep above would
-          # not survive the colon and slashes, and a body-supplied provider path
-          # is not something to hand to a command line.
+          ARG=""
+          LANE="subscription"
+          PIN=""
+
+          # Three kinds of answer, and they fail differently.
+          #
+          # A pinned model is `kompass:<provider>/<model>` — exactly one chain
+          # entry, routing bypassed. You know what answers and there is no
+          # fallback whatsoever, so a provider in cooldown fails this run rather
+          # than quietly becoming a different model.
+          #
+          # The slug on the left is what the marketplace sends, and this table
+          # is the allowlist. Slugs exist because the marker above is matched by
+          # [a-z0-9.-] and a real pin name carries a colon, slashes and capitals
+          # — and because a provider path taken out of an issue body is not
+          # something to hand to a command line. An issue body is text anyone
+          # with write access can edit.
+          #
+          # Curated from the gateway's 43 pins: the ones that can plausibly read
+          # a repo, write files, run pnpm and drive git and gh. The 8B/20B
+          # models and the 24k-context entries are deliberately absent — with no
+          # fallback behind a pin, offering one that cannot finish is offering a
+          # failed run.
           case "$CHOICE" in
-            opus|sonnet|haiku)
-              echo "arg=--model $CHOICE" >> "$GITHUB_OUTPUT"
-              echo "lane=subscription" >> "$GITHUB_OUTPUT"
-              echo "using $CHOICE" ;;
-            deepseek)
-              # Not a Claude model, and not a lane either: `kompass:<provider>/<model>`
-              # pins exactly one chain entry. That is the point — the FAST and
-              # HARD chains each carry about a dozen models and DeepSeek is one
-              # of them, so anything short of a pin usually would not be DeepSeek
-              # at all. The cost is that a pin bypasses routing: no cross-model
-              # fallback, so a provider in cooldown fails this run rather than
-              # quietly becoming a different model. The notice step at the end
-              # of this job is what makes that legible.
-              echo "arg=--model kompass:opencodezen/deepseek-v4-flash-free" >> "$GITHUB_OUTPUT"
-              echo "lane=kompass" >> "$GITHUB_OUTPUT"
-              # Written to the environment rather than set on the step below,
-              # because an ANTHROPIC_BASE_URL that exists but is empty is not
-              # the same as one that does not exist — and setting it on every
-              # run is precisely what once sent every token to Kompass. Here it
-              # is never defined at all unless this branch runs.
-              {
-                echo "ANTHROPIC_BASE_URL=https://kompass.vinoth4v.workers.dev"
-                echo "ANTHROPIC_AUTH_TOKEN=$KOMPASS_TOKEN"
-              } >> "$GITHUB_ENV"
-              echo "using the Kompass gateway, pinned to DeepSeek" ;;
-            "")
-              echo "arg=" >> "$GITHUB_OUTPUT"
-              echo "lane=subscription" >> "$GITHUB_OUTPUT"
-              echo "no model requested — using the subscription default" ;;
-            *)
-              echo "arg=" >> "$GITHUB_OUTPUT"
-              echo "lane=subscription" >> "$GITHUB_OUTPUT"
-              echo "::warning::ignoring unrecognised model '$CHOICE'" ;;
+            deepseek)            PIN="opencodezen/deepseek-v4-flash-free" ;;
+            deepseek-1m)         PIN="nvidia/deepseek-ai/deepseek-v4-flash-0731" ;;
+            minimax-m3)          PIN="nvidia/minimaxai/minimax-m3" ;;
+            nemotron-ultra)      PIN="nvidia/nvidia/nemotron-3-ultra-550b-a55b" ;;
+            nemotron-ultra-free) PIN="opencodezen/nemotron-3-ultra-free" ;;
+            glm-5.2)             PIN="nvidia/z-ai/glm-5.2" ;;
+            gemini-3.7-flash)    PIN="google/gemini-3.7-flash" ;;
+            devstral)            PIN="mistral/devstral-medium-latest" ;;
+            codestral)           PIN="mistral/codestral-2508" ;;
+            laguna-s)            PIN="openrouter/poolside/laguna-s-2.1:free" ;;
+            big-pickle)          PIN="opencodezen/big-pickle" ;;
+            mimo)                PIN="opencodezen/mimo-v2.5-free" ;;
+            north-mini-code)     PIN="openrouter/cohere/north-mini-code:free" ;;
+            step-3.7-flash)      PIN="nvidia/stepfun-ai/step-3.7-flash" ;;
           esac
+
+          if [ -n "$PIN" ]; then
+            ARG="--model kompass:$PIN"
+            LANE="kompass"
+            echo "pinned to $PIN — one model, no fallback if it is unavailable"
+          else
+            case "$CHOICE" in
+              opus|sonnet|haiku)
+                ARG="--model $CHOICE"
+                echo "using $CHOICE on the subscription" ;;
+              # Lane names are the gateway's own and are handed over verbatim —
+              # no table, because there is nothing to translate. Here the
+              # gateway classifies the request and walks a chain, so it keeps
+              # quota, cooldown and cross-model fallback. Safer than a pin, at
+              # the cost of not knowing which model answered.
+              kompass|kompass-fast|kompass-simple|kompass-agentic|kompass-hard|kompass-longctx)
+                ARG="--model $CHOICE"
+                LANE="kompass"
+                echo "routing through the gateway's $CHOICE lane — it picks the model and can fall back" ;;
+              "")
+                echo "no model requested — using the subscription default" ;;
+              *)
+                echo "::warning::ignoring unrecognised model '$CHOICE'" ;;
+            esac
+          fi
+
+          {
+            echo "arg=$ARG"
+            echo "lane=$LANE"
+          } >> "$GITHUB_OUTPUT"
+
+          # Written to the environment rather than set on the step below,
+          # because an ANTHROPIC_BASE_URL that exists but is empty is not the
+          # same as one that does not exist — and setting it on every run is
+          # precisely what once sent every token to Kompass. Here it is never
+          # defined at all unless the gateway was actually asked for.
+          if [ "$LANE" = "kompass" ]; then
+            {
+              echo "ANTHROPIC_BASE_URL=https://kompass.vinoth4v.workers.dev"
+              echo "ANTHROPIC_AUTH_TOKEN=$KOMPASS_TOKEN"
+            } >> "$GITHUB_ENV"
+          fi
       # Fails here, with the fix, rather than letting the action fail on an
       # empty credential — which reads as a model error and sends you hunting
       # in the wrong place. Each lane names only the secret it actually uses:
-      # an app that never asks for the gateway needs no KOMPASS_TOKEN, and one
-      # asking for DeepSeek needs no subscription.
+      # an app that never asks for the gateway needs no KOMPASS_TOKEN, and a
+      # request that asked for the gateway needs no subscription.
       - name: Require the lane's credential
         env:
           LANE: ${{ steps.model.outputs.lane }}
