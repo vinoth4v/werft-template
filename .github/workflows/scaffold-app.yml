@@ -76,10 +76,42 @@ on:
         options: [werft, madras, deck, nordlicht, tinte, kimi-earth, kimi-cocoa, kimi-editorial, kimi-terminal]
         default: werft
       model:
-        description: "Which model builds the plan — blank uses the subscription's default"
+        description: "Which model builds the plan — blank uses the subscription's default; kompass* routes through the gateway; the rest pin one gateway model"
         required: false
         type: choice
-        options: ["", opus, sonnet, haiku]
+        # A choice input is an allowlist GitHub enforces at dispatch time: a
+        # value missing from this list is a 422, not a fallback. So it has to
+        # stay in step with the marketplace's own picker AND with claude.yml's
+        # table — a model offered there and absent here is an option that
+        # cannot be chosen at all, and one present here but absent from
+        # claude.yml dispatches fine and then silently falls back.
+        options:
+          - ""
+          - opus
+          - sonnet
+          - haiku
+          # Routed: the gateway picks and can fall back across its chain.
+          - kompass
+          - kompass-fast
+          - kompass-simple
+          - kompass-agentic
+          - kompass-hard
+          - kompass-longctx
+          # Pinned: exactly one model, no fallback at all.
+          - deepseek
+          - deepseek-1m
+          - minimax-m3
+          - nemotron-ultra
+          - nemotron-ultra-free
+          - glm-5.2
+          - gemini-3.7-flash
+          - devstral
+          - codestral
+          - laguna-s
+          - big-pickle
+          - mimo
+          - north-mini-code
+          - step-3.7-flash
         default: ""
       build_plan:
         description: "Build plan — filed as an @claude issue so Claude Code starts building immediately. Paste the whole plan; markdown is fine"

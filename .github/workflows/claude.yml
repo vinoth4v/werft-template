@@ -4,10 +4,15 @@ name: Claude Code
 # runner. It opens or updates a pull request; it never merges one — that stays
 # a human action, always. See AGENTS.md's Phase 3 guardrails.
 #
-# Model calls go to Anthropic as the operator, using their Claude subscription
-# (ANTHROPIC_BASE_URL is deliberately absent — setting it is what sent every
-# token to Kompass instead). Kompass remains wired into claude-escalate.yml as
-# the manual escape hatch when the subscription is exhausted.
+# Model calls go to Anthropic as the operator, using their Claude subscription.
+# That is the default and stays the default: ANTHROPIC_BASE_URL is not set on
+# this job, on the action, or anywhere a run can inherit it — setting it
+# unconditionally is what once sent every token to Kompass instead. The one
+# exception is a request that explicitly asks for the gateway, which writes the
+# variable into the environment from inside its own branch of the case below,
+# so every other run never has it defined at all. Kompass also remains wired
+# into claude-escalate.yml as the manual escape hatch when the subscription is
+# exhausted.
 #
 # Historical note, since the old comment said the opposite: everything here
 # routed through Kompass until the operator asked for their subscription. App
@@ -43,17 +48,6 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      # Fails here, with the fix, rather than letting the action fail on an
-      # empty credential — which reads as a model error and sends you hunting
-      # in the wrong place.
-      - name: Require the subscription token
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: |
-          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
-            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set on this repository. Run 'claude setup-token' locally, then: gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo ${{ github.repository }}"
-            exit 1
-          fi
       # The marketplace picks a model per request, but it cannot pass it here:
       # this workflow is triggered by the issue, and sees the issue body rather
       # than whatever inputs produced it. So the choice travels inside the body
@@ -62,23 +56,133 @@ jobs:
       #
       # Absent means the subscription's own default, which is the right
       # behaviour for anything filed by hand.
+      #
+      # Read before the credential check below, not after: which secret this run
+      # actually needs depends on which lane was asked for, and failing a
+      # DeepSeek run for a missing subscription token would name the wrong
+      # problem.
       - name: Read the requested model
         id: model
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
+          KOMPASS_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
         run: |
           set -euo pipefail
           CHOICE=$(printf '%s' "$ISSUE_BODY" | grep -oE 'werft:model=[a-z0-9.-]+' | head -1 | cut -d= -f2 || true)
-          # Allowlisted rather than passed through: this value becomes a command
-          # argument, and an issue body is text anyone with write access can edit.
+          ARG=""
+          LANE="subscription"
+          PIN=""
+
+          # Three kinds of answer, and they fail differently.
+          #
+          # A pinned model is `kompass:<provider>/<model>` — exactly one chain
+          # entry, routing bypassed. You know what answers and there is no
+          # fallback whatsoever, so a provider in cooldown fails this run rather
+          # than quietly becoming a different model.
+          #
+          # The slug on the left is what the marketplace sends, and this table
+          # is the allowlist. Slugs exist because the marker above is matched by
+          # [a-z0-9.-] and a real pin name carries a colon, slashes and capitals
+          # — and because a provider path taken out of an issue body is not
+          # something to hand to a command line. An issue body is text anyone
+          # with write access can edit.
+          #
+          # Curated from the gateway's 43 pins: the ones that can plausibly read
+          # a repo, write files, run pnpm and drive git and gh. The 8B/20B
+          # models and the 24k-context entries are deliberately absent — with no
+          # fallback behind a pin, offering one that cannot finish is offering a
+          # failed run.
           case "$CHOICE" in
-            opus|sonnet|haiku) echo "arg=--model $CHOICE" >> "$GITHUB_OUTPUT"; echo "using $CHOICE" ;;
-            "") echo "arg=" >> "$GITHUB_OUTPUT"; echo "no model requested — using the subscription default" ;;
-            *) echo "arg=" >> "$GITHUB_OUTPUT"; echo "::warning::ignoring unrecognised model '$CHOICE'" ;;
+            deepseek)            PIN="opencodezen/deepseek-v4-flash-free" ;;
+            deepseek-1m)         PIN="nvidia/deepseek-ai/deepseek-v4-flash-0731" ;;
+            minimax-m3)          PIN="nvidia/minimaxai/minimax-m3" ;;
+            nemotron-ultra)      PIN="nvidia/nvidia/nemotron-3-ultra-550b-a55b" ;;
+            nemotron-ultra-free) PIN="opencodezen/nemotron-3-ultra-free" ;;
+            glm-5.2)             PIN="nvidia/z-ai/glm-5.2" ;;
+            gemini-3.7-flash)    PIN="google/gemini-3.7-flash" ;;
+            devstral)            PIN="mistral/devstral-medium-latest" ;;
+            codestral)           PIN="mistral/codestral-2508" ;;
+            laguna-s)            PIN="openrouter/poolside/laguna-s-2.1:free" ;;
+            big-pickle)          PIN="opencodezen/big-pickle" ;;
+            mimo)                PIN="opencodezen/mimo-v2.5-free" ;;
+            north-mini-code)     PIN="openrouter/cohere/north-mini-code:free" ;;
+            step-3.7-flash)      PIN="nvidia/stepfun-ai/step-3.7-flash" ;;
           esac
+
+          if [ -n "$PIN" ]; then
+            ARG="--model kompass:$PIN"
+            LANE="kompass"
+            echo "pinned to $PIN — one model, no fallback if it is unavailable"
+          else
+            case "$CHOICE" in
+              opus|sonnet|haiku)
+                ARG="--model $CHOICE"
+                echo "using $CHOICE on the subscription" ;;
+              # Lane names are the gateway's own and are handed over verbatim —
+              # no table, because there is nothing to translate. Here the
+              # gateway classifies the request and walks a chain, so it keeps
+              # quota, cooldown and cross-model fallback. Safer than a pin, at
+              # the cost of not knowing which model answered.
+              kompass|kompass-fast|kompass-simple|kompass-agentic|kompass-hard|kompass-longctx)
+                ARG="--model $CHOICE"
+                LANE="kompass"
+                echo "routing through the gateway's $CHOICE lane — it picks the model and can fall back" ;;
+              "")
+                echo "no model requested — using the subscription default" ;;
+              *)
+                echo "::warning::ignoring unrecognised model '$CHOICE'" ;;
+            esac
+          fi
+
+          {
+            echo "arg=$ARG"
+            echo "lane=$LANE"
+          } >> "$GITHUB_OUTPUT"
+
+          # Written to the environment rather than set on the step below,
+          # because an ANTHROPIC_BASE_URL that exists but is empty is not the
+          # same as one that does not exist — and setting it on every run is
+          # precisely what once sent every token to Kompass. Here it is never
+          # defined at all unless the gateway was actually asked for.
+          if [ "$LANE" = "kompass" ]; then
+            {
+              echo "ANTHROPIC_BASE_URL=https://kompass.vinoth4v.workers.dev"
+              echo "ANTHROPIC_AUTH_TOKEN=$KOMPASS_TOKEN"
+            } >> "$GITHUB_ENV"
+          fi
+      # Fails here, with the fix, rather than letting the action fail on an
+      # empty credential — which reads as a model error and sends you hunting
+      # in the wrong place. Each lane names only the secret it actually uses:
+      # an app that never asks for the gateway needs no KOMPASS_TOKEN, and a
+      # request that asked for the gateway needs no subscription.
+      - name: Require the lane's credential
+        env:
+          LANE: ${{ steps.model.outputs.lane }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          KOMPASS_TOKEN: ${{ secrets.KOMPASS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$LANE" = "kompass" ]; then
+            if [ -z "$KOMPASS_TOKEN" ]; then
+              echo "::error::KOMPASS_TOKEN is not set on this repository, and the request asked for the gateway. Set it, or re-file the request without a model: gh secret set KOMPASS_TOKEN --repo ${{ github.repository }}"
+              exit 1
+            fi
+          elif [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::error::CLAUDE_CODE_OAUTH_TOKEN is not set on this repository. Run 'claude setup-token' locally, then: gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo ${{ github.repository }}"
+            exit 1
+          fi
+      # One harness for every model: the same action, the same toolset, the same
+      # guardrails, whatever answers. Only the credential and the base URL move.
+      #
+      # Both credentials are optional inputs on the action, so the unused one is
+      # passed as empty. The `!= && secret || ''` shape rather than the more
+      # obvious `== && '' || secret` is deliberate: an empty string is falsy in
+      # a GitHub expression, so the obvious form collapses to the wrong branch
+      # every time. The guard above is what keeps the chosen branch non-empty.
       - uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_code_oauth_token: ${{ steps.model.outputs.lane != 'kompass' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_api_key: ${{ steps.model.outputs.lane == 'kompass' && secrets.KOMPASS_TOKEN || '' }}
           # Without this, the action's default tag-mode toolset applies: read,
           # comment, and git — but no Write and no Edit. Claude would read the
           # request, post "building…", and have literally no way to create a
