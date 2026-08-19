@@ -16,3 +16,7 @@ playwright-report/
 .DS_Store
 .vercel
 .pnpm-store/
+
+# graphify: local-only cost ledger; the rest of graphify-out/ is committed
+graphify-out/cost.json
+graphify-out/cache/

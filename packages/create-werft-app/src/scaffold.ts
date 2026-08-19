@@ -361,10 +361,41 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       await runner.local("pnpm", ["-r", "build"], { cwd: dir, stream: true })
     }
 
+    // ---- 6b. map the app into a knowledge graph --------------------------
+    // graphify is a local developer tool, not a build dependency, so nothing
+    // here may fail a scaffold: every call goes through `probe` and a missing
+    // or unhappy graphify degrades to a note. Extraction is tree-sitter AST
+    // only — no LLM, no API key, no network.
+    // Local work, so it runs in a dry run too — same as the clone and commit.
+    currentStep = "map the app"
+    log.step("Mapping the app into a knowledge graph")
+    if ((await runner.probe("graphify", ["--version"])).code !== 0) {
+      notes.push(
+        "graphify is not on PATH, so the app has no knowledge graph — " +
+          "install it (uv tool install graphifyy) and run `pnpm graph` in the app",
+      )
+    } else {
+      const mapped = await runner.probe("graphify", ["extract", ".", "--code-only"], { cwd: dir })
+      if (mapped.code === 0) {
+        await runner.probe("graphify", ["cluster-only", "."], { cwd: dir })
+        log.info("graphify-out/ written — it ships in the first commit")
+      } else {
+        notes.push("graphify could not map the app — run `pnpm graph` inside it to build the graph")
+      }
+    }
+
     // ---- 7. git ----------------------------------------------------------
     currentStep = "git init"
     log.step("Creating the first commit")
     await runner.local("git", ["init", "-q", "-b", "main"], { cwd: dir })
+    // Installed before the first `git add` so the hooks' .gitattributes entry
+    // (the graph.json merge driver) is part of the initial commit. From here
+    // the graph rebuilds itself on every commit and checkout, which is what
+    // keeps it in step with the app as it grows.
+    const hooked = await runner.probe("graphify", ["hook", "install"], { cwd: dir })
+    if (hooked.code === 0) {
+      log.info("graphify git hooks installed — the graph rebuilds on every commit")
+    }
     await runner.local("git", ["add", "-A"], { cwd: dir })
     await runner.local("git", ["commit", "-q", "-m", `Scaffold ${name} from werft-template`], {
       cwd: dir,

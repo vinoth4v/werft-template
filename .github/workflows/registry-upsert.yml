@@ -26,11 +26,25 @@ jobs:
             exit 0
           fi
 
+          # werft.json plus a summary of graphify-out/graph.json when the repo
+          # has one. The script falls back to werft.json alone if the graph is
+          # missing or unreadable, so a failed graph build never blocks the
+          # upsert. Apps scaffolded before the script existed post werft.json
+          # directly, exactly as they did before.
+          payload=werft.json
+          if [ -f scripts/registry-payload.mjs ]; then
+            if node scripts/registry-payload.mjs > /tmp/registry-payload.json; then
+              payload=/tmp/registry-payload.json
+            else
+              echo "payload build failed — posting werft.json unchanged"
+            fi
+          fi
+
           status=$(curl -sS -o /tmp/registry-response.json -w '%{http_code}' \
             -X POST https://werft-marketplace.vercel.app/api/registry/upsert \
             -H "Authorization: Bearer $WERFT_REGISTRY_TOKEN" \
             -H "Content-Type: application/json" \
-            --data-binary @werft.json)
+            --data-binary @"$payload")
 
           cat /tmp/registry-response.json
           if [ "$status" -ge 300 ]; then
