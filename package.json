@@ -19,7 +19,11 @@
     "hash-password": "node --experimental-strip-types apps/web/scripts/hash-password.ts",
     "create-app": "node --experimental-strip-types packages/create-werft-app/src/cli.ts",
     "werft-password": "node --experimental-strip-types packages/create-werft-app/src/password-cli.ts",
-    "retire-app": "node --experimental-strip-types packages/create-werft-app/src/retire-cli.ts"
+    "retire-app": "node --experimental-strip-types packages/create-werft-app/src/retire-cli.ts",
+    "graph": "graphify extract . --code-only && graphify cluster-only .",
+    "graph:update": "graphify update .",
+    "graph:watch": "graphify . --watch",
+    "graph:open": "open graphify-out/graph.html"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
