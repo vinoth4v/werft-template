@@ -8,7 +8,7 @@ import { color } from "./tokens.ts"
  * token package exists. The fleet-derived ones were sampled from real,
  * running apps (screenshots first, hex after), not imagined:
  *
- *   madras — SruthiScribe's warm paper, terracotta and serif
+ *   madras — SwaraScribe's warm paper, terracotta and serif
  *   deck   — LoopDeck's stage black and signal green
  *
  * The others are designed directions: nordlicht (graphite + aurora violet,
@@ -49,7 +49,7 @@ export const THEMES = {
   },
   madras: {
     label: "Madras",
-    inspiration: "From SruthiScribe — warm paper, terracotta, a serif voice.",
+    inspiration: "From SwaraScribe — warm paper, terracotta, a serif voice.",
     color: {
       bg: { light: "#faf7f2", dark: "#211d18" },
       surface: { light: "#ffffff", dark: "#2c2620" },

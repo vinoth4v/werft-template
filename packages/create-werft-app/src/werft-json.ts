@@ -16,8 +16,8 @@ export type AppStatus = (typeof APP_STATUSES)[number]
 export type WerftJson = {
   name: string
   /**
-   * How the app brands itself, for display only — "SruthiScribe Learn" rather
-   * than the `sruthiscribe-learn` slug `name` is forced to be by doubling as a
+   * How the app brands itself, for display only — "SwaraScribe Learn" rather
+   * than the `swarascribe-learn` slug `name` is forced to be by doubling as a
    * repo, database and subdomain. Optional; without it the slug is displayed.
    */
   title?: string

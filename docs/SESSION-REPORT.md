@@ -743,3 +743,76 @@ Plus the Part 0 verification (no code changes — a real run, a real sign-in,
 a real cleanup). 20 commits total on `main` since Phase 1 began; tree clean,
 pushed, `pnpm -r build` / `lint` / `typecheck` / `test` / `test:e2e` all exit
 0 as of the last line of this report.
+
+---
+
+# Session report — graphify knowledge graphs
+
+Every app scaffolded from this template now maps itself into a knowledge
+graph, keeps that map current by itself, and reports a summary of it to the
+registry so the marketplace can show what an app is made of. Green:
+`typecheck`, `lint`, `test` (110 in `create-werft-app`, 17 in `apps/web`) and
+`build` all exit 0.
+
+## 1. What changed
+
+### The scaffold maps a new app before its first commit
+
+`scaffold.ts` gains a step between "verify build" and "git init": run
+`graphify extract . --code-only`, then `cluster-only`. Straight after
+`git init` and *before* the first `git add`, it runs `graphify hook install`,
+so the post-commit hook and the `graph.json` merge driver's `.gitattributes`
+entry are both part of the initial commit. From then on the graph rebuilds
+itself on every commit and checkout — tree-sitter AST only, no LLM, no API
+key, no network, nothing to pay for.
+
+Every graphify call goes through `runner.probe`, never `runner.local`.
+graphify is a local developer tool, not a build dependency: if it is missing
+or unhappy the scaffold adds a note and carries on. A visualisation must
+never be the reason an app fails to be created.
+
+It runs in a dry run too, matching the clone and the commit — in this
+codebase `--dry-run` means "do the local work, create nothing remote", and
+extraction is entirely local.
+
+### Apps report their graph to the registry
+
+`scripts/registry-payload.mjs` builds what `registry-upsert.yml` posts:
+`werft.json` as before, plus a summary of the committed
+`graphify-out/graph.json`. The workflow falls back to posting `werft.json`
+directly when the script is absent, so apps scaffolded before this change
+keep working untouched.
+
+A real graph is ~460KB — too big for a row per app and far too big to send to
+a browser. The summary is bounded instead: totals, the eight most-connected
+nodes, and a 150-node sample with the ≤600 edges between them. This repo's
+own graph reduces to about 11KB. The sample keeps the *most-connected* nodes
+rather than the first N, because degree is what makes a node worth drawing;
+an arbitrary slice of a file-ordered list would show whatever sorts first.
+
+The marketplace enforces the same bounds as a schema on arrival, including a
+check that no edge index points past the node list — the renderer indexes
+straight into that array, so a malformed payload has to stop at the boundary.
+
+## 2. Decisions worth keeping
+
+- **`graphify-out/` is committed; `graphify-out/cache/` is not.** CI reads
+  `graph.json` out of the checkout, so an uncommitted graph means no app ever
+  reports one and the whole feature is inert. The AST cache is rebuildable and
+  churns on every run, and graphify's own docs call committing it optional.
+- **An absent graph never deletes a stored one.** The upsert treats a missing
+  `graph` as "this sender had nothing to report", not "delete what you have".
+  A CI run whose graph build failed must not blank a graph that was reported
+  correctly last time.
+- **The template's own graph is committed too**, so `werft-template`'s registry
+  row shows one like any other app. A new app briefly inherits it from the
+  clone and immediately overwrites it in the scaffold's own extract step.
+
+## 3. Still open
+
+- The community labels are placeholders (`Community 7`) rather than names.
+  Naming them needs an LLM pass over the graph; the structural work — hubs,
+  communities, cross-file edges — is complete and free without it.
+- `.claude/settings.json` hardcodes an absolute path to the `graphify` binary,
+  which is what graphify's installer writes and is correct for a
+  single-operator setup, but would not resolve on another machine.

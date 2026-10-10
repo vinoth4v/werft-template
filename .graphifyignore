@@ -1,0 +1,18 @@
+# Extra exclusions for the knowledge graph, on top of .gitignore.
+# Same syntax as .gitignore; these patterns are evaluated last.
+#
+# Inherited by every app scaffolded from this template.
+
+# Build + tooling output that adds nodes without adding meaning.
+.next/
+.turbo/
+.vercel/
+coverage/
+playwright-report/
+test-results/
+
+# Lockfiles are large and structurally uninteresting in the graph.
+pnpm-lock.yaml
+
+# The graph's own output.
+graphify-out/
