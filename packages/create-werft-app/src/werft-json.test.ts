@@ -92,7 +92,7 @@ describe("title", () => {
   })
 
   it("accepts a display name the slug rules could never allow", () => {
-    expect(validateWerftJson({ ...valid, title: "SruthiScribe Learn" })).toEqual([])
+    expect(validateWerftJson({ ...valid, title: "SwaraScribe Learn" })).toEqual([])
   })
 
   it("rejects a present-but-empty title, which would render a blank heading", () => {

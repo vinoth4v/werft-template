@@ -448,7 +448,7 @@ full resource cleanup. Zero residue.
    then, Vercel-touching CI re-breaks daily and needs the secret refreshed.**
 
 Also that evening: eleven more real apps backfilled into the registry at the
-operator's request (loopdeck, sruthiscribe, sruthiscribe-learn, adjutant,
+operator's request (loopdeck, swarascribe, swarascribe-learn, adjutant,
 stagegrid, visufinanz, nayoniq-atlas, replforge, editkumpel,
 horizon-catalog, ontos) — every URL verified live before recording, real
 repo descriptions where they existed, the app's own page title where they
@@ -490,7 +490,7 @@ the bucket every blob-storing app needs, not a guessed function.
 `kimi-editorial`|`kimi-terminal`): named themes in
 `@werft/tokens` — same token *names*, different values, so a theme changes
 nothing in any component. madras and deck were sampled from the real
-running SruthiScribe and LoopDeck (screenshot → hex); nordlicht and tinte
+running SwaraScribe and LoopDeck (screenshot → hex); nordlicht and tinte
 are designed directions. Written to `theme.json`, which the token build
 reads; absent means default, so the template and every pre-theme app build
 unchanged. The marketplace picker is visual, per the operator's explicit
@@ -560,7 +560,7 @@ it demands this of, over ordinary HTTP with the shared token.
 
 **Display names.** `name` has to be a GitHub repo, a Neon project, a Vercel
 project and a subdomain simultaneously, so it is a slug by necessity and can
-never read "SruthiScribe Learn". An optional `title` carries the brand for
+never read "SwaraScribe Learn". An optional `title` carries the brand for
 display only; nothing resolves by it, and an app that omits it renders
 exactly as before. The detail page keeps the slug in mono under the heading,
 because that page is where the repo/database/project name is the useful fact.
