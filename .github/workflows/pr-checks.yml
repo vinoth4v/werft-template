@@ -109,6 +109,8 @@ jobs:
     name: preview-smoke
     runs-on: ubuntu-latest
     needs: build
+    # The template itself is never deployed, so it has no preview to test; apps made from it always run this.
+    if: github.repository != 'vinoth4v/werft-template'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

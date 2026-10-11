@@ -1,5 +1,6 @@
+import { deleteAppDatabase } from "./appsdb.ts"
+import { coolifyFromEnv, deleteCoolifyApp } from "./coolify.ts"
 import { deleteAppAwsUser } from "./iam.ts"
-import { deleteNeonProject, findNeonProjectId } from "./neon.ts"
 import {
   bucketRegion,
   deleteBucket,
@@ -7,7 +8,6 @@ import {
   listAppBuckets,
   resolveAwsCredentials,
 } from "./s3.ts"
-import { deleteVercelProject, resolveVercelToken } from "./vercel.ts"
 
 /**
  * Retires an app: removes every remote resource the scaffold created for it.
@@ -80,46 +80,51 @@ export async function retire(
     if (dryRun) log(`  [dry-run] would remove ${what}`)
   }
 
-  // ---- 1. Vercel ---------------------------------------------------------
+  // ---- 1. Coolify --------------------------------------------------------
   // First because it is what serves the app: once it is gone the app is off
-  // the internet, which is the point of retiring it.
-  announce(`Vercel project ${name}`)
+  // the internet, which is the point of retiring it. Its PR previews go with it.
+  announce(`Coolify application ${name}`)
   if (!dryRun) {
-    const auth = await resolveVercelToken()
-    if (!auth) {
+    const coolify = coolifyFromEnv()
+    if (!coolify) {
       record({
-        what: `Vercel project ${name}`,
+        what: `Coolify application ${name}`,
         outcome: "failed",
-        detail: "no Vercel API token (run `vercel login` or set VERCEL_TOKEN)",
+        detail: "COOLIFY_API_URL / COOLIFY_API_TOKEN are not set (retire runs on the home runner)",
       })
     } else {
-      const gone = await deleteVercelProject(name, auth.token)
-      record({
-        what: `Vercel project ${name}`,
-        outcome: gone ? "removed" : "failed",
-        detail: gone ? undefined : "Vercel refused the delete",
-      })
+      try {
+        const outcome = await deleteCoolifyApp(coolify, name)
+        record({ what: `Coolify application ${name}`, outcome })
+      } catch (error) {
+        record({
+          what: `Coolify application ${name}`,
+          outcome: "failed",
+          detail: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
   }
 
-  // ---- 2. Neon -----------------------------------------------------------
-  announce(`Neon project ${name}`)
+  // ---- 2. the database ---------------------------------------------------
+  // After the app, so nothing is still writing to it. Production and the
+  // preview copy, and the app's login role.
+  announce(`apps-db databases and role for ${name}`)
   if (!dryRun) {
-    const apiKey = process.env.NEON_API_KEY ?? ""
-    if (apiKey === "") {
-      record({ what: `Neon project ${name}`, outcome: "failed", detail: "NEON_API_KEY is not set" })
+    const adminUrl = process.env.APPS_DB_ADMIN_URL ?? ""
+    if (adminUrl === "") {
+      record({
+        what: `apps-db database ${name}`,
+        outcome: "failed",
+        detail: "APPS_DB_ADMIN_URL is not set",
+      })
     } else {
-      const id = await findNeonProjectId(name, apiKey)
-      if (id === "") {
-        record({ what: `Neon project ${name}`, outcome: "absent" })
-      } else {
-        const gone = await deleteNeonProject(id, apiKey)
-        record({
-          what: `Neon project ${name} (${id})`,
-          outcome: gone ? "removed" : "failed",
-          detail: gone ? undefined : "Neon refused the delete",
-        })
-      }
+      const outcome = await deleteAppDatabase(name, adminUrl)
+      record({
+        what: `apps-db databases and role for ${name}`,
+        outcome,
+        detail: outcome === "failed" ? "apps-db refused the drop" : undefined,
+      })
     }
   }
 

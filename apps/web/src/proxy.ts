@@ -17,5 +17,7 @@ export default NextAuth(authConfig).auth
  * caller silently gets a redirect instead of the route.
  */
 export const config = {
-  matcher: ["/((?!api/auth|login|_next/static|_next/image|favicon.ico|icon.svg|werft-commit.txt).*)"],
+  matcher: [
+    "/((?!api/auth|login|_next/static|_next/image|favicon.ico|icon.svg|werft-commit.txt).*)",
+  ],
 }

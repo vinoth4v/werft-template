@@ -1,20 +1,16 @@
 /**
- * Applies migrations over the same neon-http (HTTP) driver the app itself
- * uses at runtime, instead of `drizzle-kit migrate`'s CLI, which defaults to
- * a websocket-based Pool.
+ * Applies the checked-in migrations to DATABASE_URL over node-postgres, the
+ * same driver the app uses at runtime. Run by deploy/start.mjs before the app
+ * starts (a failure stops the new container, so the old one keeps serving), by
+ * the scaffold against a new app's database, and by hand as `pnpm db:migrate`.
  *
- * Real, reproducible failure this replaces: `drizzle-kit migrate` hung for
- * ~60s then failed with no error message, 4/4 times, in GitHub Actions —
- * against a branch independently confirmed healthy (a direct HTTP query
- * returned in 531ms, a websocket Pool query in 1087ms, and the CLI itself
- * succeeded in 2s run locally against the identical connection string). The
- * one variable that differed was the runner network path to Neon's
- * websocket proxy specifically. The neon-http driver never opens a
- * websocket at all, so it cannot hit that failure mode.
+ * A script rather than `drizzle-kit migrate`: the CLI once hung for ~60s and
+ * failed silently in CI, 4/4 times, against a healthy database; running the
+ * migrator in-process has never shown that.
  */
-import { neon } from "@neondatabase/serverless"
-import { drizzle } from "drizzle-orm/neon-http"
-import { migrate } from "drizzle-orm/neon-http/migrator"
+import { drizzle } from "drizzle-orm/node-postgres"
+import { migrate } from "drizzle-orm/node-postgres/migrator"
+import { Pool } from "pg"
 
 const url = process.env.DATABASE_URL
 if (!url) {
@@ -22,7 +18,10 @@ if (!url) {
   process.exit(1)
 }
 
-const db = drizzle(neon(url))
-
-await migrate(db, { migrationsFolder: "src/db/migrations" })
-console.log("migrations applied successfully")
+const pool = new Pool({ connectionString: url, max: 1 })
+try {
+  await migrate(drizzle(pool), { migrationsFolder: "src/db/migrations" })
+  console.log("migrations applied successfully")
+} finally {
+  await pool.end()
+}

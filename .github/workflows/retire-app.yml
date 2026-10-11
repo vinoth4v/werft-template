@@ -1,8 +1,8 @@
 name: Retire app
 
 # The marketplace's "retire" button, made real — the mirror of scaffold-app.yml.
-# It runs here because this repo holds every credential the teardown needs
-# (Neon, Vercel, AWS, the registry token); the marketplace only gets to ask.
+# It runs on the home runner, which holds the Coolify and apps-db credentials,
+# with the AWS and registry tokens from this repo; the marketplace only gets to ask.
 #
 # The confirmation is the app's name typed back, checked in the workflow as well
 # as in the form. A dispatch can be sent by anything holding the token, so the
@@ -31,14 +31,16 @@ on:
 
 jobs:
   retire:
-    runs-on: ubuntu-latest
+    # The home runner: the only place Coolify's API and apps-db are reachable.
+    # It holds COOLIFY_API_URL, COOLIFY_API_TOKEN and APPS_DB_ADMIN_URL in its
+    # own environment, so those never become GitHub secrets. Only manual
+    # (workflow_dispatch) workflows use this label; pull-request checks never do.
+    runs-on: [self-hosted, werft-home]
     timeout-minutes: 15
     env:
       # Needs the delete_repo scope for --delete-repo; the same token that
       # creates repositories for the scaffold.
       GH_TOKEN: ${{ secrets.GH_SCAFFOLD_TOKEN }}
-      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       WERFT_REGISTRY_TOKEN: ${{ secrets.WERFT_REGISTRY_TOKEN }}
       # Only used when the app had a bucket. Absent is fine: the teardown
       # reports S3 as "skipped" rather than failing an app that never had one.
@@ -70,9 +72,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - name: Install the Vercel CLI
-        run: npm install -g vercel@58
-
       - name: Retire it
         env:
           APP_NAME: ${{ inputs.app_name }}
@@ -96,7 +95,7 @@ jobs:
           OWNER=$(gh api user -q .login)
           if [ "$OUTCOME" = "success" ]; then
             TITLE="$APP_NAME retired"
-            BODY="Everything $APP_NAME owned has been removed: Vercel project, Neon database, any S3 bucket and scoped AWS user, and its registry row. See the run for the per-resource report."
+            BODY="Everything $APP_NAME owned has been removed: its Coolify application (and previews), its databases and role on apps-db, any S3 bucket and scoped AWS user, and its registry row. See the run for the per-resource report."
           else
             TITLE="$APP_NAME was only partly retired"
             BODY="Some resources survived. The run log lists exactly which and why — they are still costing money until dealt with. Every step is safe to repeat, so fixing the cause and re-running is the fastest path."

@@ -34,8 +34,9 @@ export class Ledger {
   /**
    * Undoes in reverse order of creation and returns whatever is still standing.
    *
-   * Reverse order matters: the local directory holds the Vercel link, so it
-   * must go last.
+   * Reverse order matters: later resources depend on earlier ones (the Coolify
+   * application builds from the repository; the database outlives neither), and
+   * the local directory, created first, goes last.
    */
   async rollback(onAttempt?: (resource: Resource, undone: boolean) => void): Promise<Resource[]> {
     const orphaned: Resource[] = []

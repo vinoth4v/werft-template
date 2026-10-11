@@ -4,9 +4,6 @@ ENV CI=1 NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=3072
 WORKDIR /app
 RUN corepack enable
 COPY . .
-# the app was written for Neon; the self-hosted build talks to a plain Postgres through deploy/neon-pg-shim
-RUN if [ -f pnpm-workspace.yaml ]; then printf "\noverrides:\n  '@neondatabase/serverless': file:./deploy/neon-pg-shim\n" >> pnpm-workspace.yaml; \
-    else node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.pnpm=Object.assign(p.pnpm||{},{overrides:Object.assign((p.pnpm||{}).overrides||{},{'@neondatabase/serverless':'file:./deploy/neon-pg-shim'})});fs.writeFileSync('package.json',JSON.stringify(p,null,2))"; fi
 RUN pnpm install --frozen-lockfile=false
 WORKDIR /app/apps/web
 # the commit this image was built from, published so CI can tell the preview is up to date (.github/scripts/wait-for-preview.mjs)

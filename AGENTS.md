@@ -105,12 +105,11 @@ pnpm create-app --help            # scaffold a new app from this template
 - **Never print a cleanup command you have not executed successfully.** A
   command that only looks right is worse than no command: it is trusted, fails,
   and the resource survives anyway.
-- **Never put Vercel SSO in front of a Werft app by default.** The app's own
-  NextAuth gate is the access control. Vercel SSO gates the whole deployment,
-  which breaks preview URLs and duplicates protection the app already has.
-  Cloudflare Access is the layer for anything needing more. Vercel applies SSO
-  to every new project as a team-level default, so it has to be cleared per
-  project — `--vercel-sso` opts back in.
+- **Never put a second gate in front of a Werft app by default.** The app's
+  own NextAuth gate is the access control; a gate in front of the whole
+  deployment breaks preview URLs and duplicates protection the app already
+  has. Cloudflare Access is the layer for anything needing more, added
+  deliberately per app.
 - **Never hand-edit generated files** (migrations, `next-env.d.ts`, the token
   stylesheet, lockfile).
 - **Never write a raw colour, spacing, or font value into CSS.** Add a design
@@ -120,8 +119,8 @@ pnpm create-app --help            # scaffold a new app from this template
   in `claude.yml` may call `gh pr merge` or equivalent.
 - **Never give the `@claude` workflow the production database.** It gets
   nothing beyond `KOMPASS_TOKEN` and the GitHub App's own repo permissions — no
-  `NEON_API_KEY`, no `DATABASE_URL`. Whatever it changes gets a real preview
-  database the normal way: `pr-checks.yml` already brands every PR with one.
+  database credentials, no `DATABASE_URL`. Whatever it changes gets a real
+  preview the normal way: every PR runs on a copy of production (`<db>_preview`).
 
 ## Blessed dependencies
 
@@ -130,7 +129,7 @@ first — say what you want and why, then wait.
 
 - Framework: `next`, `react`, `react-dom`
 - Auth: `next-auth`
-- Data: `drizzle-orm`, `drizzle-kit`, `@neondatabase/serverless`
+- Data: `drizzle-orm`, `drizzle-kit`, `pg` (node-postgres)
 - Validation: `zod`
 - Design: `@werft/tokens` (in this workspace, no runtime dependencies)
 - Tooling: `typescript`, `@biomejs/biome`, `vitest`, `@playwright/test`
@@ -143,7 +142,8 @@ native build steps break fresh installs.
 - Serve an App Router application, closed by default: every route requires the
   operator's session unless explicitly exempted.
 - Authenticate that one operator against a password hash in the environment.
-- Talk to a Neon Postgres database through Drizzle, with migrations checked in.
+- Talk to a Postgres database through Drizzle (node-postgres), with migrations
+  checked in; in production that is the app's own database on apps-db.
 - Record notable events to an append-only audit table, and keep working when
   that write fails.
 - Validate its own environment on first use, with an error naming what is
@@ -155,7 +155,8 @@ native build steps break fresh installs.
 - Describe itself to the Werft registry in `werft.json`, validated against a
   schema that rejects unknown keys and anything shaped like a secret.
 - Scaffold a new app from itself: copy, install, build, commit, then create the
-  GitHub repository, Neon project and Vercel project — cheapest-to-undo first,
+  GitHub repository, its database on apps-db and its Coolify application — run
+  on the home runner (scaffold-app.yml) — cheapest-to-undo first,
   with a dry run that does every local step and creates nothing remote.
 - Gate every pull request on four checks before merge: a secret scan, a
   typecheck, a build that must exit 0, and a Playwright smoke test against that

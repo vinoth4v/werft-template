@@ -2,29 +2,29 @@ import { randomBytes } from "node:crypto"
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import {
+  appsDbDeleteCommand,
+  createAppDatabase,
+  deleteAppDatabase,
+  verifyAppsDb,
+} from "./appsdb.ts"
 import type { Options } from "./args.ts"
+import {
+  appDomain,
+  coolifyDeleteCommand,
+  coolifyFromEnv,
+  createCoolifyApp,
+  deleteCoolifyApp,
+  deployCoolifyApp,
+  setCoolifyEnv,
+  verifyCoolify,
+  waitForDeployment,
+} from "./coolify.ts"
 import { type ExecOptions, type ExecResult, exec, quote } from "./exec.ts"
 import { createAppAwsUser, deleteAppAwsUser } from "./iam.ts"
 import { Ledger, type Resource } from "./ledger.ts"
-import {
-  createNeonProject,
-  deleteNeonProject,
-  neonDeleteCommand,
-  verifyNeonApiKey,
-} from "./neon.ts"
-import { setVercelEnv } from "./operator-password.ts"
 import { REGIONS } from "./regions.ts"
 import { createBucket, deleteBucket, resolveAwsCredentials } from "./s3.ts"
-import {
-  extractDeployUrl,
-  getProjectSettings,
-  productionAliasUrl,
-  readLinkedProject,
-  resolveVercelToken,
-  SSO_ENABLED,
-  stableAliasUrl,
-  updateProjectSettings,
-} from "./vercel.ts"
 import { NAME_PATTERN, renderWerftJson, type WerftJson } from "./werft-json.ts"
 
 export type Logger = {
@@ -107,38 +107,6 @@ class Runner {
     return this.local(command, args, options)
   }
 
-  /**
-   * Like `remote`, but a nonzero exit is not automatically a failure — the
-   * caller decides, from the actual output, whether this run of the command
-   * was redundant rather than wrong.
-   *
-   * `vercel git connect --yes` exits 1 when the repository is already
-   * connected — which happens whenever `vercel link` auto-detected it — and
-   * that is success, not a step to roll everything back over.
-   */
-  async remoteTolerant(
-    command: string,
-    args: readonly string[],
-    alreadyDone: (result: ExecResult) => boolean,
-    options?: ExecOptions,
-  ): Promise<ExecResult> {
-    if (this.dryRun) {
-      this.log.info(`[dry-run] would run: ${quote(command, args)}`)
-      return { code: 0, stdout: "", stderr: "" }
-    }
-
-    this.log.info(`$ ${quote(command, args)}`)
-    const result = await exec(command, args, options)
-    if (result.code === 0) return result
-    if (alreadyDone(result)) {
-      this.log.info("already done — treating as success")
-      return result
-    }
-    throw new StepFailure(
-      `${quote(command, args)} exited ${result.code}${result.stderr ? `\n${indent(result.stderr)}` : ""}`,
-    )
-  }
-
   get isDryRun(): boolean {
     return this.dryRun
   }
@@ -157,7 +125,8 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
   // checkout of the template itself.
   const dir = resolve(options.dir ?? join(homedir(), "Documents", "workspace", name))
   const webDir = join(dir, "apps", "web")
-  const neonApiKey = process.env.NEON_API_KEY ?? ""
+  const appsDbAdminUrl = process.env.APPS_DB_ADMIN_URL ?? ""
+  const coolify = coolifyFromEnv()
   const region = options.region ? REGIONS[options.region] : undefined
 
   try {
@@ -188,34 +157,41 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       )
     }
 
-    if ((await runner.probe("vercel", ["whoami"])).code !== 0) {
+    // The deployment and the database live on the home server; both are only
+    // reachable from inside the home network, which is why a real run happens
+    // on the self-hosted runner (scaffold-app.yml), not on a laptop.
+    if (!coolify) {
       requireForRealRun(
         runner,
         notes,
-        "vercel is not installed or not authenticated — run: vercel login",
-      )
-    }
-
-    if (neonApiKey === "") {
-      requireForRealRun(
-        runner,
-        notes,
-        "NEON_API_KEY is not set — create a key at console.neon.tech",
+        "COOLIFY_API_URL / COOLIFY_API_TOKEN are not set — real runs happen on the home runner (scaffold-app.yml)",
       )
     } else {
-      log.info("checking NEON_API_KEY")
-      const check = await verifyNeonApiKey(neonApiKey)
-      if (check === "rejected") {
+      log.info("checking the Coolify API")
+      const check = await verifyCoolify(coolify)
+      if (check !== "ok") {
         requireForRealRun(
           runner,
           notes,
-          "Neon rejected NEON_API_KEY — check it is current, and not a placeholder exported verbatim",
+          `Coolify ${check === "rejected" ? "rejected COOLIFY_API_TOKEN" : "is unreachable at COOLIFY_API_URL"}`,
         )
-      } else if (check === "unreachable") {
+      }
+    }
+
+    if (appsDbAdminUrl === "") {
+      requireForRealRun(
+        runner,
+        notes,
+        "APPS_DB_ADMIN_URL is not set — real runs happen on the home runner (scaffold-app.yml)",
+      )
+    } else {
+      log.info("checking apps-db")
+      const check = await verifyAppsDb(appsDbAdminUrl)
+      if (check !== "ok") {
         requireForRealRun(
           runner,
           notes,
-          "could not reach the Neon API to verify NEON_API_KEY — check the network before provisioning",
+          `apps-db ${check === "rejected" ? "rejected APPS_DB_ADMIN_URL" : "is unreachable"}`,
         )
       }
     }
@@ -395,36 +371,32 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       })
     }
 
-    // ---- 9. Neon ---------------------------------------------------------
-    currentStep = "create Neon project"
-    log.step("Creating the Neon project")
-    // Captured for the CI-secrets step at the end, which needs them after
-    // these blocks' own scopes have closed.
-    let neonProjectId = ""
-    let vercelProjectId = ""
-    let vercelOrgId = ""
-    let vercelApiToken = ""
-    let vercelTokenSource = ""
+    // ---- 9. database -----------------------------------------------------
+    currentStep = "create the database"
+    log.step("Creating the database on apps-db")
+    // Captured for the Coolify step, which sets the preview database too.
+    let previewDatabaseUrl = ""
 
     if (runner.isDryRun) {
-      log.info(`[dry-run] would POST https://console.neon.tech/api/v2/projects {"name":"${name}"}`)
+      log.info(
+        `[dry-run] would create role, database and ${name.replace(/-/g, "_")}_preview on apps-db`,
+      )
     } else {
-      const project = await createNeonProject(name, neonApiKey, region?.neon)
-      neonProjectId = project.id
+      const database = await createAppDatabase(name, appsDbAdminUrl)
       ledger.record({
-        what: `Neon project ${project.id}`,
-        cleanup: neonDeleteCommand(project.id),
-        undo: async () => deleteNeonProject(project.id, neonApiKey),
+        what: `apps-db database ${database.database} (and ${database.database}_preview, role ${database.role})`,
+        cleanup: appsDbDeleteCommand(name),
+        undo: async () => (await deleteAppDatabase(name, appsDbAdminUrl)) !== "failed",
       })
-      if (region) log.info(`Neon region: ${region.neon}`)
-      envValues.DATABASE_URL = project.connectionUri
+      envValues.DATABASE_URL = database.connectionUri
+      previewDatabaseUrl = database.previewUri
       await upsertEnvLocal(webDir, envValues)
 
       currentStep = "run migrations"
       log.step("Running migrations against the new database")
       await runner.local("pnpm", ["db:migrate"], {
         cwd: dir,
-        env: { DATABASE_URL: project.connectionUri },
+        env: { DATABASE_URL: database.connectionUri },
         stream: true,
       })
     }
@@ -486,99 +458,29 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       }
     }
 
-    // ---- 10. Vercel ------------------------------------------------------
-    currentStep = "create and link Vercel project"
-    log.step(`Linking the Vercel project ${name}`)
-    await runner.remote("vercel", ["link", "--yes", "--project", name], { cwd: dir })
-    if (!runner.isDryRun) {
-      ledger.record({
-        what: `Vercel project ${name}`,
-        // `vercel project rm` has no --yes: it rejects the flag outright and
-        // then prompts. The confirmation is piped in.
-        cleanup: `printf 'y\\n' | vercel project rm ${name}`,
-        undo: async () =>
-          (await exec("vercel", ["project", "rm", name], { input: "y\n" })).code === 0,
-      })
-    }
-
-    // Connects the GitHub repo just pushed to this Vercel project, so pushes to
-    // main deploy automatically and PR branches get preview deployments — the
-    // whole premise of Phase 2. Also a prerequisite the API enforces: a
-    // branch-scoped preview env var is refused on a project with no connected
-    // Git repository, discovered by testing that call against a bare project.
-    currentStep = "connect Vercel to the GitHub repository"
-    log.step("Connecting Vercel to the GitHub repository")
-    await runner.remoteTolerant(
-      "vercel",
-      ["git", "connect", "--yes"],
-      (result) =>
-        result.stdout.includes("already connected") || result.stderr.includes("already connected"),
-      { cwd: dir },
-    )
-
-    // Before the first deploy, not after: Vercel otherwise builds this monorepo
-    // from the repository root and looks for output there, so the build passes
-    // and the deploy fails.
-    currentStep = "configure the Vercel project"
+    // ---- 10. Coolify -----------------------------------------------------
+    // Builds the Dockerfile on every push to main and gives every PR a preview
+    // at pr<N>-<name>.<domain>. Routing needs nothing per app: the wildcard DNS
+    // record and tunnel rule send unknown hosts to Coolify's proxy already.
+    currentStep = "create the Coolify application"
+    const domain = appDomain(name)
+    let coolifyUuid = ""
+    log.step(`Creating the Coolify application ${name} (https://${domain})`)
     if (runner.isDryRun) {
-      log.step("Configuring the Vercel project")
       log.info(
-        `[dry-run] would PATCH /v9/projects/{id} {"rootDirectory":"apps/web","framework":"nextjs","ssoProtection":${options.vercelSso ? JSON.stringify(SSO_ENABLED) : "null"}}`,
+        `[dry-run] would create a Coolify application from ${slug}, domain ${domain}, previews on`,
       )
-    } else {
-      log.step("Configuring the Vercel project")
-      const linked = await readLinkedProject(dir)
-      if (!linked) {
-        throw new StepFailure("vercel link wrote no .vercel/project.json to read the project from")
-      }
-
-      const auth = await resolveVercelToken()
-      if (!auth) {
-        throw new StepFailure(
-          "no Vercel API token: run `vercel login`, or set VERCEL_TOKEN. `vercel link` sets neither of these settings on its own",
-        )
-      }
-      log.info(`using the token from ${auth.source}`)
-      vercelProjectId = linked.projectId
-      vercelOrgId = linked.orgId
-      vercelApiToken = auth.token
-      vercelTokenSource = auth.source
-
-      // Vercel applies SSO to every new project as a team-level default, so
-      // clearing it is an explicit act on each one.
-      await updateProjectSettings(linked, auth.token, {
-        rootDirectory: "apps/web",
-        framework: "nextjs",
-        ssoProtection: options.vercelSso ? SSO_ENABLED : null,
-        // Only when a region was chosen — omitting leaves Vercel's default,
-        // so unregioned apps behave exactly as before.
-        ...(region ? { serverlessFunctionRegion: region.vercel } : {}),
+    } else if (coolify) {
+      coolifyUuid = await createCoolifyApp(coolify, { name, repository: slug, domain })
+      ledger.record({
+        what: `Coolify application ${name}`,
+        cleanup: coolifyDeleteCommand(name),
+        undo: async () => (await deleteCoolifyApp(coolify, name)) === "removed",
       })
-
-      const confirmed = await getProjectSettings(linked, auth.token)
-      const ssoMatches = Boolean(confirmed?.ssoProtection) === options.vercelSso
-      const regionMatches = !region || confirmed?.serverlessFunctionRegion === region.vercel
-      if (
-        confirmed?.rootDirectory !== "apps/web" ||
-        confirmed.framework !== "nextjs" ||
-        !ssoMatches ||
-        !regionMatches
-      ) {
-        throw new StepFailure(
-          `Vercel reports rootDirectory=${confirmed?.rootDirectory ?? "unset"} framework=${confirmed?.framework ?? "unset"} sso=${confirmed?.ssoProtection ? "on" : "off"} region=${confirmed?.serverlessFunctionRegion ?? "default"} after asking for apps/web, nextjs, sso ${options.vercelSso ? "on" : "off"}${region ? `, region ${region.vercel}` : ""}`,
-        )
-      }
-      log.info(
-        `confirmed: rootDirectory = apps/web, framework = nextjs, Vercel SSO ${options.vercelSso ? "on" : "off"}${region ? `, region ${region.vercel}` : ""}`,
-      )
-      if (!options.vercelSso) {
-        notes.push("Vercel SSO is off — the app's own single-user gate is the access control")
-      }
     }
+    envValues.AUTH_URL = `https://${domain}`
+    envValues.AUTH_TRUST_HOST = "true"
 
-    // Both targets: production for the deployed app, preview so every PR
-    // branch's deployment can authenticate and reach a database too, not just
-    // the default DATABASE_URL a Neon-branch workflow overrides per PR later.
     // What the app itself needs to reach a model at runtime. Distinct from the
     // KOMPASS_TOKEN armed as a repository secret: that one is for CI, this one
     // is read by the running app through src/kompass.ts. Set unconditionally,
@@ -591,36 +493,31 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
       envValues.KOMPASS_TOKEN = kompassToken
     } else {
       notes.push(
-        "no KOMPASS_TOKEN found, so the app cannot call a model at runtime — set it later with `vercel env add KOMPASS_TOKEN` if a feature needs one",
+        "no KOMPASS_TOKEN found, so the app cannot call a model at runtime — set it later in Coolify (the app's Environment Variables) if a feature needs one",
       )
     }
 
-    currentStep = "push environment variables"
-    log.step("Pushing environment variables to Vercel")
-    // Set through the API rather than `vercel env add`, one call per variable
-    // covering both targets.
-    //
-    // The CLI version ran without error and created production entries only.
-    // Every app scaffolded that way had a preview deployment missing
-    // AUTH_SECRET, WERFT_USER_EMAIL and WERFT_PASSWORD_HASH, so signing into a
-    // preview failed with "There was a problem with the server configuration"
-    // — and preview-smoke never caught it, because it checks that the login
-    // page renders, not that a login works.
-    //
-    // setVercelEnv also clears any existing entry for the key first, which is
-    // what keeps one variable from ending up as two rows with different
-    // targets and different values.
+    currentStep = "set environment variables"
+    log.step("Setting environment variables in Coolify")
+    // Production gets every value. Previews get the same (Coolify copies them),
+    // except the database: previews run on <db>_preview, and IS_PREVIEW lets
+    // deploy/start.mjs refuse a preview that is somehow pointed at production.
+    // Sign-in on a preview follows the preview's own host (deploy/start.mjs).
+    const previewOverrides: Record<string, string> = { IS_PREVIEW: "true" }
+    if (previewDatabaseUrl) previewOverrides.DATABASE_URL = previewDatabaseUrl
     for (const [key, value] of Object.entries(envValues)) {
-      if (runner.isDryRun) {
-        log.info(`[dry-run] would set ${key} for production and preview`)
+      if (runner.isDryRun || !coolify) {
+        log.info(`[dry-run] would set ${key} in Coolify`)
         continue
       }
-      const ok = await setVercelEnv(name, key, value, vercelApiToken)
-      if (!ok) {
-        throw new StepFailure(
-          `Vercel refused the environment variable ${key} — the app would deploy unable to read it`,
-        )
+      await setCoolifyEnv(coolify, coolifyUuid, key, value)
+    }
+    for (const [key, value] of Object.entries(previewOverrides)) {
+      if (runner.isDryRun || !coolify) {
+        log.info(`[dry-run] would set ${key} for previews`)
+        continue
       }
+      await setCoolifyEnv(coolify, coolifyUuid, key, value, { preview: true })
     }
 
     // ---- 11. arm the CI pipeline ------------------------------------------
@@ -636,25 +533,10 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     // it skipped "gracefully" and the app silently never self-registered.
     currentStep = "set repository CI secrets"
     log.step("Setting the repository's CI secrets")
-    const ciSecrets: Record<string, string> = {
-      NEON_API_KEY: neonApiKey,
-      NEON_PROJECT_ID: neonProjectId,
-      VERCEL_TOKEN: vercelApiToken,
-      VERCEL_PROJECT_ID: vercelProjectId,
-    }
-    // Personal-account projects must not send a teamId at all — same rule the
-    // Vercel API calls already follow.
-    if (vercelOrgId.startsWith("team_")) ciSecrets.VERCEL_ORG_ID = vercelOrgId
-
-    // The CLI's credential rotates roughly daily — a secret copied from it
-    // went invalid the same afternoon once, taking every Vercel-touching CI
-    // job with it. Arm it anyway (better than a dead pipeline today), but say
-    // so loudly.
-    if (vercelTokenSource === "vercel CLI") {
-      notes.push(
-        "VERCEL_TOKEN was armed from the CLI's rotating credential and will expire within ~a day — mint a long-lived token at vercel.com/account/tokens and keep it in ~/.config/werft/vercel-token",
-      )
-    }
+    // Nothing per project any more: the PR pipeline needs no deployment
+    // credentials (Coolify builds previews itself; preview-smoke only reads the
+    // preview's public /werft-commit.txt). Only the shared secrets below.
+    const ciSecrets: Record<string, string> = {}
 
     // Shared across every app, unlike the per-project values above. Sourced
     // from the environment or ~/.config/werft/, never invented.
@@ -691,36 +573,27 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     if (options.deploy) {
       currentStep = "deploy"
       log.step("Deploying to production")
-      const deployed = await runner.remote("vercel", ["deploy", "--prod", "--yes"], { cwd: dir })
-      // The stable alias, not the URL of this one deployment — Vercel
-      // deployments are immutable, so recording a specific one goes stale the
-      // moment the next deploy happens. extractDeployUrl still runs, only to
-      // confirm the deploy actually printed something rather than silently
-      // producing nothing.
-      const thisDeployment = extractDeployUrl(deployed.stdout)
-      if (thisDeployment === "" && !runner.isDryRun) {
-        notes.push("the deploy produced no URL — something may be wrong; check `vercel ls`")
-      }
-      if (runner.isDryRun) {
-        url = ""
+      if (runner.isDryRun || !coolify) {
+        log.info(`[dry-run] would deploy ${name} on Coolify and wait for it`)
       } else {
-        // Ask Vercel rather than assuming `<name>.vercel.app`: a name that
-        // collides with someone else's project gets a suffix, and guessing
-        // records a URL that 404s. Fall back to the guess only if the API
-        // cannot answer — every remote resource already exists by now, so
-        // this must not be the thing that fails the run.
-        url = vercelApiToken ? await productionAliasUrl(name, vercelApiToken, vercelOrgId) : ""
-        if (url === "") {
-          url = stableAliasUrl(name)
-          notes.push(
-            `could not read the production alias from Vercel — recorded ${url}, which is a guess; confirm with \`vercel inspect\` and fix werft.json if it differs`,
+        // The container migrates its own database and starts; a deploy that
+        // never becomes healthy is rolled back by Coolify and reported here.
+        const status = await waitForDeployment(
+          coolify,
+          await deployCoolifyApp(coolify, coolifyUuid),
+        )
+        if (status !== "finished") {
+          throw new StepFailure(
+            `the first deployment ${status} — see the deployment log in Coolify`,
           )
-        } else {
-          log.info(`production alias: ${url}`)
         }
+        url = `https://${domain}`
+        log.info(`deployed: ${url}`)
       }
     } else {
-      notes.push("not deployed — run `vercel deploy --prod` when ready, then set werft.json url")
+      notes.push(
+        `not deployed — the first push to main deploys it, or press Deploy in Coolify; it will live at https://${domain}`,
+      )
     }
 
     // ---- 13. record the URL ---------------------------------------------
@@ -743,17 +616,16 @@ export async function scaffold(options: Options, log: Logger): Promise<ScaffoldO
     currentStep = "protect main"
     if (options.private) {
       notes.push(
-        "branch protection not set: GitHub Free does not support required checks on a private repo — upgrade to Pro or make it public, then require gitleaks, typecheck, build, neon-preview-branch, preview-smoke",
+        "branch protection not set: GitHub Free does not support required checks on a private repo — upgrade to Pro or make it public, then require gitleaks, typecheck, build, preview-smoke",
       )
     } else {
-      log.step("Requiring the five checks on main")
+      log.step("Requiring the four checks on main")
       const protection = JSON.stringify({
         required_status_checks: {
           strict: false,
-          // All five, and neon-preview-branch explicitly: preview-smoke only
-          // skips (not fails) when its dependency fails, and GitHub does not
-          // treat a skipped required check as blocking.
-          contexts: ["gitleaks", "typecheck", "build", "neon-preview-branch", "preview-smoke"],
+          // build as well as preview-smoke: preview-smoke needs build, and
+          // GitHub does not treat a skipped required check as blocking.
+          contexts: ["gitleaks", "typecheck", "build", "preview-smoke"],
         },
         enforce_admins: true,
         required_pull_request_reviews: null,
@@ -838,7 +710,7 @@ async function templateStack(dir: string): Promise<string[]> {
   } catch {
     // fall through
   }
-  return ["next", "typescript", "neon", "drizzle", "next-auth", "vercel"]
+  return ["next", "typescript", "postgres", "drizzle", "next-auth", "coolify"]
 }
 
 async function renameRootPackage(dir: string, name: string): Promise<void> {
@@ -923,15 +795,15 @@ cannot be signed into.
 
 Say what you want in the app's page on the
 [marketplace](https://werft-marketplace.vinothkannan.de), or comment \`@claude\` on an
-issue here. Either way Claude works on a branch and opens a pull request; five
-gates run against a real preview on its own database branch, and a human
-merges. Nothing reaches production on its own.
+issue here. Either way Claude works on a branch and opens a pull request; the
+gates run against a real preview on a copy of the production database, and a
+human merges. Nothing reaches production on its own.
 
 ## Deployment
 
-Merging to \`main\` deploys. Migrations are applied to production during that
-build, before it starts — a failed migration fails the build and the previous
-deployment keeps serving.
+Merging to \`main\` deploys (Coolify, on the home server). The new container
+migrates the database before it starts serving — a failed migration stops it
+and the previous deployment keeps serving.
 `
 }
 
@@ -1014,7 +886,7 @@ what was rejected, and what is still open.
 **Asked:** create the app.
 
 **Changed:** scaffolded from werft-template — App Router, single-operator
-auth, Neon via Drizzle, design tokens, the PR gates, and \`@claude\` wired to
+auth, Postgres via Drizzle, design tokens, the PR gates, and \`@claude\` wired to
 the operator's Claude subscription.
 
 **Decided:** nothing yet beyond the template's own choices, which are in

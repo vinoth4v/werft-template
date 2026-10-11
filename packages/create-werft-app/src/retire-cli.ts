@@ -13,7 +13,7 @@ import { retire } from "./retire.ts"
 function help(): string {
   return `usage: pnpm retire-app --name <app> --confirm <app> [options]
 
-Removes an app's Vercel project, Neon database, S3 buckets, scoped AWS user
+Removes an app's Coolify application, its databases on apps-db, S3 buckets, scoped AWS user
 and registry row. The GitHub repository is kept unless you ask for it.
 
 options:

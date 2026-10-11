@@ -35,7 +35,6 @@ export type Options = {
   skipInstall: boolean
   skipBrowsers: boolean
   deploy: boolean
-  vercelSso: boolean
   region: RegionKey | undefined
   withS3: boolean
   theme: ThemeKey
@@ -52,7 +51,6 @@ const BOOLEAN_FLAGS = {
   "skip-browsers": "skipBrowsers",
   deploy: "deploy",
   "no-deploy": "deploy",
-  "vercel-sso": "vercelSso",
   "with-s3": "withS3",
   "no-rollback": "rollback",
   private: "private",
@@ -97,9 +95,6 @@ export function parseArgs(argv: readonly string[]): ParseResult {
     skipBrowsers: false,
     // On by default: Phase 1 is done when one command gives a deployed app.
     deploy: true,
-    // Off by default: the app's own gate is the access control, and Vercel SSO
-    // in front of the whole deployment would break Phase 2 preview URLs.
-    vercelSso: false,
     region: undefined,
     withS3: false,
     theme: "werft",
@@ -192,12 +187,12 @@ what it does, cheapest-to-undo first:
   1. copy the template locally, install, build
   2. git init and commit
   3. create the GitHub repository and push
-  4. create the Neon project
-  5. create and link the Vercel project, push environment variables
+  4. create the database (and its _preview copy) on apps-db
+  5. create the Coolify application with previews, set environment variables
   6. deploy to production, and record the URL in werft.json
 
 options:
-  --name <name>          app name; also the repo, Neon and Vercel project name
+  --name <name>          app name; also the repo, database, Coolify app and URL
   --title <text>         display name, e.g. "My App" (default: the name itself)
   --description <text>   one line, for the registry card
   --dir <path>           where to write it (default: ~/Documents/workspace/<name>)
@@ -209,11 +204,9 @@ options:
   --email <address>      the single operator who may sign in
   --password <password>  hashed locally into .env.local; never transmitted
   --dry-run              do all local work, create no remote resources
-  --no-deploy            stop after pushing environment variables
-  --vercel-sso           put Vercel SSO in front of the whole deployment
-  --region <key>         where it lives: ${REGION_KEYS.join(" | ")} — one choice
-                         co-locating database, functions and bucket (default:
-                         each provider's own default)
+  --no-deploy            stop after setting environment variables
+  --region <key>         where the optional S3 bucket lives: ${REGION_KEYS.join(" | ")}
+                         (default: eu-central-1)
   --with-s3              provision a per-app S3 bucket and wire AWS env vars
   --theme <name>         design theme: ${THEME_KEYS.join(" | ")} (default: werft)
   --skip-install         do not run pnpm install
@@ -222,9 +215,12 @@ options:
   --yes                  never prompt; fail if something required is missing
   -h, --help             this text
 
-environment:
-  NEON_API_KEY           required unless --dry-run. Never written to the repo.
+environment (all required unless --dry-run; set on the home runner, never in the repo):
+  COOLIFY_API_URL        e.g. http://coolify:8080/api/v1
+  COOLIFY_API_TOKEN      Coolify API token (read, write, deploy)
+  APPS_DB_ADMIN_URL      postgres://… admin connection to apps-db
 
-credentials for GitHub and Vercel come from the gh and vercel CLIs.
+GitHub credentials come from the gh CLI. A real run happens on the home
+runner (scaffold-app.yml), the only place Coolify and apps-db are reachable.
 `
 }

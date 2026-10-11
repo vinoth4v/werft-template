@@ -1,7 +1,8 @@
 # werft-template
 
 Template repo for the Werft harness: Next.js App Router, TypeScript strict,
-Neon + Drizzle, and a single-user NextAuth gate.
+Postgres + Drizzle, and a single-user NextAuth gate. Apps made from it run on
+Coolify on the home server.
 
 ## Getting started
 

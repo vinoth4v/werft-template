@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { exec } from "./exec.ts"
+import { type CoolifyAuth, deployCoolifyApp, findCoolifyApp, setCoolifyEnv } from "./coolify.ts"
 
 /**
  * One operator password, for every app Werft has delivered.
@@ -13,7 +13,7 @@ import { exec } from "./exec.ts"
  *
  *   ~/.config/werft/password-hash   the standing value, read by the scaffold
  *   WERFT_PASSWORD_HASH (secret)    so runner-scaffolded apps get it too
- *   every app's Vercel environment  so apps already delivered accept it
+ *   every app's Coolify environment so apps already delivered accept it
  *
  * What is stored is the scrypt hash, never the password. It is the same value
  * the app itself stores, so keeping it buys an attacker nothing an app's own
@@ -59,8 +59,8 @@ export async function readStandingHash(path: string = HASH_PATH): Promise<string
 /**
  * Every app in the registry, via the token-authenticated fleet endpoint.
  *
- * The registry is the only place that knows what has been delivered; a Vercel
- * project list would also include projects Werft never made.
+ * The registry is the only place that knows what has been delivered; Coolify's
+ * application list also includes apps Werft never made.
  */
 export async function fetchFleet(registryBase: string, token: string): Promise<FleetApp[]> {
   const response = await fetch(`${registryBase}/api/registry/apps`, {
@@ -73,113 +73,56 @@ export async function fetchFleet(registryBase: string, token: string): Promise<F
 }
 
 /**
- * Sets one environment variable on a Vercel project, for both targets — and
- * leaves exactly one entry behind.
+ * Pushes the standing hash to every delivered app on Coolify and redeploys it.
  *
- * `upsert=true` alone is not enough, which cost a real inconsistency: Vercel
- * scopes an entry to a set of targets, and upserting production+preview beside
- * an existing preview-only entry creates a *second* entry rather than merging.
- * The marketplace ended up holding two WERFT_PASSWORD_HASH values — the new one
- * for production and a stale one still claiming preview — so a preview
- * deployment would have accepted the previous password. Silent, and only
- * visible by listing the variables.
- *
- * So every existing entry for the key is removed first. The end state is one
- * entry covering both targets, whatever the project started with.
- */
-export async function setVercelEnv(
-  projectName: string,
-  key: string,
-  value: string,
-  token: string,
-): Promise<boolean> {
-  const auth = { Authorization: `Bearer ${token}` }
-
-  const listed = await fetch(`https://api.vercel.com/v9/projects/${projectName}/env`, {
-    headers: auth,
-  }).catch(() => null)
-  if (listed?.ok) {
-    const body = (await listed.json().catch(() => null)) as {
-      envs?: { id?: unknown; key?: unknown }[]
-    } | null
-    for (const entry of body?.envs ?? []) {
-      if (entry.key !== key || typeof entry.id !== "string") continue
-      await fetch(`https://api.vercel.com/v9/projects/${projectName}/env/${entry.id}`, {
-        method: "DELETE",
-        headers: auth,
-      }).catch(() => null)
-    }
-  }
-
-  const response = await fetch(
-    `https://api.vercel.com/v10/projects/${projectName}/env?upsert=true`,
-    {
-      method: "POST",
-      headers: { ...auth, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        key,
-        value,
-        type: "encrypted",
-        target: ["production", "preview"],
-      }),
-    },
-  ).catch(() => null)
-  return response?.ok ?? false
-}
-
-/**
- * Rebuilds the app so the new value is actually in force.
- *
- * Vercel captures environment variables into a deployment, so a project whose
- * variable changed keeps serving the old one until something redeploys. Without
- * this the rotation would report success while every app still accepted only
- * the previous password — the worst kind of half-done, because it looks whole.
- *
- * --no-wait: a fleet rotation should not sit through each build in series.
- */
-export async function redeployProduction(url: string): Promise<boolean> {
-  const result = await exec("vercel", ["redeploy", url, "--no-wait", "--target", "production"])
-  return result.code === 0
-}
-
-/**
- * Pushes the standing hash to every delivered app.
+ * Coolify reads environment variables when a container starts, so a changed
+ * value is only in force after a redeploy; without one the rotation would
+ * report success while every app still accepted only the previous password.
+ * The variable is literal: a scrypt hash is full of `$`, which must arrive as
+ * written. Redeploys are started, not waited for.
  *
  * Reports per app, and never claims more than it did: an app whose variable was
- * set but whose redeploy failed is "env-only", which is honest about the fact
- * that the new password is not live there yet.
+ * set but whose redeploy did not start is "env-only".
  */
 export async function refreshFleet(
   hash: string,
   apps: readonly FleetApp[],
-  vercelToken: string,
+  coolify: CoolifyAuth,
   log: (line: string) => void,
 ): Promise<AppOutcome[]> {
   const outcomes: AppOutcome[] = []
 
   for (const app of apps) {
-    if (app.url === "") {
-      outcomes.push({ name: app.name, outcome: "skipped", detail: "never deployed" })
-      log(`  ${app.name}: skipped (never deployed)`)
+    const uuid = await findCoolifyApp(coolify, app.name).catch(() => "")
+    if (uuid === "") {
+      outcomes.push({
+        name: app.name,
+        outcome: "skipped",
+        detail: "no Coolify application by that name",
+      })
+      log(`  ${app.name}: skipped (not on Coolify)`)
       continue
     }
 
-    const envSet = await setVercelEnv(app.name, "WERFT_PASSWORD_HASH", hash, vercelToken)
-    if (!envSet) {
-      outcomes.push({
-        name: app.name,
-        outcome: "failed",
-        detail: "Vercel refused the environment variable — is this app's project still there?",
-      })
+    try {
+      await setCoolifyEnv(coolify, uuid, "WERFT_PASSWORD_HASH", hash)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      outcomes.push({ name: app.name, outcome: "failed", detail })
       log(`  ${app.name}: FAILED to set the variable`)
       continue
     }
 
-    const redeployed = await redeployProduction(app.url)
+    const redeployed = await deployCoolifyApp(coolify, uuid).then(
+      () => true,
+      () => false,
+    )
     outcomes.push({
       name: app.name,
       outcome: redeployed ? "updated" : "env-only",
-      detail: redeployed ? undefined : "variable set, but the redeploy did not start — rerun it",
+      detail: redeployed
+        ? undefined
+        : "variable set, but the redeploy did not start — press Deploy in Coolify",
     })
     log(
       `  ${app.name}: ${redeployed ? "updated and redeploying" : "variable set, REDEPLOY FAILED"}`,
