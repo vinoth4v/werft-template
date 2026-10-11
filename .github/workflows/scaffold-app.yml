@@ -242,7 +242,7 @@ jobs:
             printf -- '- **URL:** %s (%s)\n' "$URL" "$STATUS"
             printf -- '- **Sign in:** your standing operator email and password\n'
             printf -- '- **Repo:** https://github.com/%s\n' "$SLUG"
-            printf -- '- **On the wall:** https://werft-marketplace.vercel.app/apps/%s\n\n' "$APP_NAME"
+            printf -- '- **On the wall:** https://werft-marketplace.vinothkannan.de/apps/%s\n\n' "$APP_NAME"
             if [ "$HAD_PLAN" = "true" ]; then
               printf 'Claude Code has the build plan and is working on a branch. It opens a pull\n'
               printf 'request; you merge it. Watch the Pull requests tab.\n'

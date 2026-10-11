@@ -104,33 +104,11 @@ jobs:
           echo "::error::Source changed but no documentation did. README.md is the front door (what it is, what works); docs/ARCHITECTURE.md is how it works now; docs/SESSIONS.md is why. Describe the app as it now is in ARCHITECTURE.md, and append what you decided and why to SESSIONS.md. See AGENTS.md."
           exit 1
 
-  neon-preview:
-    name: neon-preview-branch
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.9.0
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: node .github/scripts/neon-preview-branch.mjs create
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GIT_BRANCH: ${{ github.head_ref }}
 
   preview-smoke:
     name: preview-smoke
     runs-on: ubuntu-latest
-    needs: neon-preview
+    needs: build
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -141,13 +119,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Wait for the preview deployment
+      - name: Wait for the Coolify preview of this commit
         id: preview
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           GIT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          APP_NAME: ${{ github.event.repository.name }}
         run: |
           url=$(node .github/scripts/wait-for-preview.mjs)
           echo "url=$url" >> "$GITHUB_OUTPUT"

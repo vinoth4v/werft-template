@@ -159,67 +159,35 @@ native build steps break fresh installs.
   with a dry run that does every local step and creates nothing remote.
 - Gate every pull request on four checks before merge: a secret scan, a
   typecheck, a build that must exit 0, and a Playwright smoke test against that
-  PR's real Vercel preview URL.
-- Give every pull request its own Neon database branch, migrated and wired to
-  its Vercel preview deployment, deleted when the PR closes.
-- Self-heal a preview branch that outlives its PR: a scheduled sweep
-  (`reap-stale-preview-branches.yml`, every 6 hours) catches what the
-  closed-event trigger can miss — confirmed on a real run: a PR auto-closed
-  by GitHub as superseded (identical `closed_at` to the PR that replaced it)
-  never fired `pull_request: closed` at all, and its Neon branch and Vercel
-  env leaked until this existed.
+  PR's real preview, `https://pr<N>-<app>.vinothkannan.de`, built by Coolify on
+  the home server.
+- Previews never touch production data: every preview of an app runs against
+  `<db>_preview` on apps-db, a copy of production refreshed nightly
+  (`scripts/preview-db-refresh.sh` in homestack). The container migrates its own
+  database when it starts (`deploy/start.mjs`), and a preview refuses to start
+  unless its database name ends in `_preview`. Coolify removes a preview when
+  its PR closes, so there is nothing to clean up or reap.
 
-## Phase 2 repository secrets
+## Phase 2: deployment and the PR pipeline (self-hosted)
 
-The PR pipeline (`.github/workflows/pr-checks.yml`, `pr-cleanup.yml`) needs
-these as GitHub Actions secrets on the app's repository. None of them belong in
-werft.json or any committed file.
+The app is deployed by Coolify from this repository's `Dockerfile`: every push
+to `main` deploys production at `https://<app>.vinothkannan.de`, every PR gets a
+preview at `https://pr<N>-<app>.vinothkannan.de`. Nothing runs on Vercel or Neon.
 
-**`create-werft-app` sets all of these itself** at the end of a real run — it
-holds every per-project value the moment provisioning finishes, and reads the
-shared ones (`WERFT_REGISTRY_TOKEN`, `KOMPASS_TOKEN`) from the environment or
-`~/.config/werft/<name>`. It also applies branch protection (the five
-required checks) to public repos, deliberately as the last remote step:
-required checks reject direct pushes to `main` even from the owner, and the
-scaffold's own final commit pushes to `main`. The table below is what to set
-by hand only when a shared secret wasn't available at scaffold time — the
-run's notes say exactly which, with the exact command.
-
-| Secret | Where it comes from |
-|---|---|
-| `NEON_API_KEY` | console.neon.tech → Account → API keys |
-| `NEON_PROJECT_ID` | the parent project's ID, printed when `create-werft-app` runs |
-| `VERCEL_TOKEN` | vercel.com → Account → Tokens |
-| `VERCEL_ORG_ID` | the Vercel team ID, only if the project belongs to a team |
-| `VERCEL_PROJECT_ID` | `.vercel/project.json` after `vercel link`, or the Vercel dashboard |
-
-Branch protection on `main` must separately mark the checks as required — the
-workflow produces them, but cannot make GitHub enforce them. Requires GitHub
-Pro on a private repo (Free rejects the API call outright); a public repo
-gets it for free.
-
-**Which checks to require differs by repo.** An app scaffolded from this
-template has its own Neon and Vercel projects, so **all five** —
-`gitleaks`, `typecheck`, `build`, `neon-preview-branch`, `preview-smoke` —
-belong in `required_status_checks`, not four. `neon-preview-branch` has to
-be listed explicitly and separately: `preview-smoke` depends on it via
-`needs:`, so when it fails, `preview-smoke` merely *skips* rather than
-fails — and GitHub does not treat a skipped required check as blocking.
-Requiring only `preview-smoke` therefore does not actually enforce anything
-about the database/preview pipeline at all. Found the hard way: a real,
-diagnosed, reproduced-4x migration bug merged into `main` anyway, because
-only `preview-smoke` was required and its skip read as "fine" to GitHub.
-
-This template repo itself is never deployed — it has no Neon or Vercel
-project of its own — so `neon-preview-branch` always fails there for a
-structural reason (`missing required env`) and `preview-smoke` always
-skips. Requiring either on **this** repo's own `main` would permanently
-block every PR here regardless of code quality. Verified by testing: a PR
-was genuinely refused by GitHub (`the base branch policy prohibits the
-merge`) with all four (of the ones that make sense here) required, then
-merged cleanly once the required set here was narrowed to `gitleaks`,
-`typecheck`, `build` — this repo's required set is correctly missing
-`neon-preview-branch` and `preview-smoke` both, not a mistake to fix.
+- **Migrations**: `deploy/start.mjs` runs `pnpm run db:migrate` against the
+  container's own `DATABASE_URL` before starting Next.js. A failing migration
+  stops the new container, so the previous deployment keeps serving.
+- **The PR pipeline** (`.github/workflows/pr-checks.yml`) needs no deployment
+  secrets: `preview-smoke` waits (`.github/scripts/wait-for-preview.mjs`) until
+  the preview's `/werft-commit.txt` shows the PR's head commit, then runs
+  Playwright against it.
+- **Required checks** on `main`: `gitleaks`, `typecheck`, `build`,
+  `preview-smoke`. `preview-smoke` depends on `build` via `needs:`; that is
+  safe only because `build` is required itself: GitHub does not block on a
+  required check that was *skipped* (found the hard way when a migration bug
+  merged because only `preview-smoke` was required and it had skipped).
+- The template repository itself is never deployed, so `preview-smoke` cannot
+  pass there; its own `main` requires only `gitleaks`, `typecheck`, `build`.
 
 ## Phase 3 — remote Claude Code
 

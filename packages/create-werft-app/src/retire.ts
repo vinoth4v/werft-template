@@ -54,7 +54,7 @@ export type RetireOptions = {
   registryBaseUrl?: string
 }
 
-const DEFAULT_REGISTRY = "https://werft-marketplace.vercel.app"
+const DEFAULT_REGISTRY = "https://werft-marketplace.vinothkannan.de"
 
 export async function retire(
   options: RetireOptions,

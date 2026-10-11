@@ -1,0 +1,12 @@
+{
+  "name": "@neondatabase/serverless",
+  "version": "1.0.0-selfhost",
+  "description": "Drop-in replacement for @neondatabase/serverless that talks to a plain Postgres through node-postgres. Used when an app that was built for Neon runs against the homeserver's Postgres. Same exports the apps use: neon(), Pool, Client, neonConfig, types.",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.13.0",
+    "neon-types": "npm:@neondatabase/serverless@^1.0.0"
+  },
+  "types": "index.d.ts"
+}

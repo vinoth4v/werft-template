@@ -25,7 +25,7 @@ import { resolveVercelToken } from "./vercel.ts"
  * what is stored, set and pushed is the scrypt hash.
  */
 
-const REGISTRY = process.env.WERFT_REGISTRY_URL ?? "https://werft-marketplace.vercel.app"
+const REGISTRY = process.env.WERFT_REGISTRY_URL ?? "https://werft-marketplace.vinothkannan.de"
 
 async function readSharedFile(name: string): Promise<string> {
   return (await readFile(join(homedir(), ".config", "werft", name), "utf8").catch(() => "")).trim()
