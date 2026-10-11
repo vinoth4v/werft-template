@@ -74,7 +74,13 @@ async function call<T>(
       response.status,
     )
   }
-  return (text ? JSON.parse(text) : {}) as T
+  // Most endpoints answer JSON; a few (GET /version) answer plain text.
+  if (text === "") return {} as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return text as T
+  }
 }
 
 /** Whether the API answers this token — for the scaffold's preflight. */

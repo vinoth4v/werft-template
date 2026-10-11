@@ -56,6 +56,11 @@ describe("appDomain", () => {
 })
 
 describe("verifyCoolify", () => {
+  it("is ok when the API answers, even though /version is plain text, not JSON", async () => {
+    stubCoolify(() => new Response("4.4.6", { status: 200 }))
+    expect(await verifyCoolify(auth)).toBe("ok")
+  })
+
   it("separates a rejected token from an unreachable API", async () => {
     stubCoolify(() => new Response("{}", { status: 401 }))
     expect(await verifyCoolify(auth)).toBe("rejected")
