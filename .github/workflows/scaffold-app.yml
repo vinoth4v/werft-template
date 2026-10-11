@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: "App name — becomes the repo, database, Vercel project and URL"
+        description: "App name — becomes the repo, database, Coolify app and URL (<name>.vinothkannan.de)"
         required: true
         type: string
       title:
@@ -53,13 +53,8 @@ on:
         required: false
         type: boolean
         default: true
-      vercel_sso:
-        description: "Put Vercel SSO in front of the whole deployment"
-        required: false
-        type: boolean
-        default: false
       region:
-        description: "Where it lives — co-locates database, functions and bucket"
+        description: "Where the optional S3 bucket lives (the app itself runs on the home server)"
         required: false
         type: choice
         options: ["", us-east, eu-central, us-west]
@@ -89,15 +84,16 @@ on:
 
 jobs:
   scaffold:
-    runs-on: ubuntu-latest
+    # The home runner: the only place Coolify's API and apps-db are reachable.
+    # It holds COOLIFY_API_URL, COOLIFY_API_TOKEN and APPS_DB_ADMIN_URL in its
+    # own environment, so those never become GitHub secrets. Only manual
+    # (workflow_dispatch) workflows use this label; pull-request checks never do.
+    runs-on: [self-hosted, werft-home]
     timeout-minutes: 20
     env:
       # gh CLI reads GH_TOKEN; needs a token that can create repos, which the
       # workflow's own GITHUB_TOKEN cannot (it is scoped to this repo only).
       GH_TOKEN: ${{ secrets.GH_SCAFFOLD_TOKEN }}
-      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-      # The Vercel CLI and the scaffold's API calls both read this env var.
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       # The admin AWS key lives here, once, and never in a scaffolded app:
       # --with-s3 uses it to mint each app its own bucket-scoped IAM user.
       # Absent is fine — the scaffold only reads it when --with-s3 is passed.
@@ -126,8 +122,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - name: Install the Vercel CLI
-        run: npm install -g vercel@58
       - name: Configure git identity and credentials
         run: |
           git config --global user.email "werft-scaffold[bot]@users.noreply.github.com"
@@ -151,18 +145,20 @@ jobs:
           APP_THEME: ${{ inputs.theme }}
         run: |
           set -euo pipefail
-          # --dir is the runner's throwaway checkout, not the operator's
+          # --template is this checkout, so the app is made from exactly the template
+          # version this workflow runs (a branch, when testing one), not whatever
+          # main is. --dir is the runner's throwaway checkout, not the operator's
           # laptop: the app is pushed to GitHub and the directory discarded
           # when the runner ends. The ~/Documents/workspace default only
           # applies to a human running the CLI.
           FLAGS=(--name "$APP_NAME" --description "$APP_DESCRIPTION" --email "$APP_EMAIL" \
-                 --status "$APP_STATUS" --theme "$APP_THEME" --dir "$RUNNER_TEMP/$APP_NAME" --yes)
+                 --status "$APP_STATUS" --theme "$APP_THEME" --dir "$RUNNER_TEMP/$APP_NAME" --yes \
+                 --template "file://$GITHUB_WORKSPACE")
           [ -n "$APP_TITLE" ] && FLAGS+=(--title "$APP_TITLE")
           [ -n "$APP_TAGS" ] && FLAGS+=(--tags "$APP_TAGS")
           [ -n "$APP_REGION" ] && FLAGS+=(--region "$APP_REGION")
           [ "${{ inputs.visibility }}" = "public" ] && FLAGS+=(--public) || FLAGS+=(--private)
           [ "${{ inputs.deploy }}" = "false" ] && FLAGS+=(--no-deploy)
-          [ "${{ inputs.vercel_sso }}" = "true" ] && FLAGS+=(--vercel-sso)
           [ "${{ inputs.with_s3 }}" = "true" ] && FLAGS+=(--with-s3)
           node --experimental-strip-types packages/create-werft-app/src/cli.ts "${FLAGS[@]}"
       - name: File the build plan as an @claude issue
@@ -242,7 +238,7 @@ jobs:
             printf -- '- **URL:** %s (%s)\n' "$URL" "$STATUS"
             printf -- '- **Sign in:** your standing operator email and password\n'
             printf -- '- **Repo:** https://github.com/%s\n' "$SLUG"
-            printf -- '- **On the wall:** https://werft-marketplace.vercel.app/apps/%s\n\n' "$APP_NAME"
+            printf -- '- **On the wall:** https://werft-marketplace.vinothkannan.de/apps/%s\n\n' "$APP_NAME"
             if [ "$HAD_PLAN" = "true" ]; then
               printf 'Claude Code has the build plan and is working on a branch. It opens a pull\n'
               printf 'request; you merge it. Watch the Pull requests tab.\n'

@@ -104,88 +104,92 @@ describe("isWerftApp", () => {
 })
 
 describe("refreshFleet", () => {
+  const coolify = { base: "http://coolify.test/api/v1", token: "tok" }
   const apps: FleetApp[] = [
-    { name: "live", url: "https://live.vercel.app", status: "active" },
-    { name: "undeployed", url: "", status: "prototype" },
+    { name: "live", url: "https://live.vinothkannan.de", status: "active" },
+    { name: "elsewhere", url: "https://elsewhere.example", status: "active" },
   ]
 
-  it("skips an app that was never deployed, and does not call Vercel for it", async () => {
-    const calls: string[] = []
-    vi.stubGlobal("fetch", async (url: string | URL) => {
-      calls.push(String(url))
-      return new Response("{}", { status: 200 })
+  /** A fake Coolify: "live" exists, "elsewhere" does not. Records every call. */
+  function fakeCoolify(
+    overrides: { envStatus?: number; deployStatus?: number; firstEnvStatus?: number } = {},
+  ) {
+    const calls: { method: string; url: string; body: string }[] = []
+    let envPosts = 0
+    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      const method = init?.method ?? "GET"
+      calls.push({ method, url: u, body: typeof init?.body === "string" ? init.body : "" })
+      if (u.endsWith("/applications") && method === "GET") {
+        return new Response(JSON.stringify([{ uuid: "app-live", name: "live" }]), { status: 200 })
+      }
+      if (u.includes("/applications/app-live/envs")) {
+        if (method === "POST") {
+          envPosts++
+          const status =
+            envPosts === 1 && overrides.firstEnvStatus
+              ? overrides.firstEnvStatus
+              : (overrides.envStatus ?? 201)
+          return new Response(JSON.stringify({ message: status === 409 ? "exists" : "ok" }), {
+            status,
+          })
+        }
+        return new Response("{}", { status: overrides.envStatus ?? 200 })
+      }
+      if (u.includes("/deploy?uuid=app-live")) {
+        return new Response(JSON.stringify({ deployments: [{ deployment_uuid: "d1" }] }), {
+          status: overrides.deployStatus ?? 200,
+        })
+      }
+      return new Response("{}", { status: 404 })
     })
+    return calls
+  }
 
-    const outcomes = await refreshFleet(HASH, apps, "tok", () => {})
-    expect(outcomes.find((o) => o.name === "undeployed")?.outcome).toBe("skipped")
-    expect(calls.every((url) => !url.includes("undeployed"))).toBe(true)
+  it("skips an app that has no Coolify application, and touches nothing for it", async () => {
+    const calls = fakeCoolify()
+    const outcomes = await refreshFleet(HASH, [apps[1] as FleetApp], coolify, () => {})
+    expect(outcomes[0]?.outcome).toBe("skipped")
+    expect(calls.every((c) => c.method === "GET")).toBe(true)
+  })
+
+  it("sets the hash and redeploys: updated", async () => {
+    const calls = fakeCoolify()
+    const outcomes = await refreshFleet(HASH, [apps[0] as FleetApp], coolify, () => {})
+    expect(outcomes[0]?.outcome).toBe("updated")
+    expect(calls.some((c) => c.method === "POST" && c.url.includes("/deploy?uuid=app-live"))).toBe(
+      true,
+    )
   })
 
   it("reports env-only when the variable landed but the redeploy did not", async () => {
     // The distinction that matters: the new password is stored but not yet in
     // force, and saying "updated" here would be a lie.
-    vi.stubGlobal("fetch", async () => new Response("{}", { status: 200 }))
-    const exec = await import("./exec.ts")
-    vi.spyOn(exec, "exec").mockResolvedValue({ code: 1, stdout: "", stderr: "no" })
-
-    const outcomes = await refreshFleet(HASH, [apps[0] as FleetApp], "tok", () => {})
+    fakeCoolify({ deployStatus: 500 })
+    const outcomes = await refreshFleet(HASH, [apps[0] as FleetApp], coolify, () => {})
     expect(outcomes[0]?.outcome).toBe("env-only")
     expect(outcomes[0]?.detail).toContain("redeploy")
   })
 
-  it("reports failed when Vercel refuses the variable", async () => {
-    vi.stubGlobal("fetch", async () => new Response("nope", { status: 403 }))
-    const outcomes = await refreshFleet(HASH, [apps[0] as FleetApp], "tok", () => {})
+  it("reports failed when Coolify refuses the variable", async () => {
+    fakeCoolify({ envStatus: 422 })
+    const outcomes = await refreshFleet(HASH, [apps[0] as FleetApp], coolify, () => {})
     expect(outcomes[0]?.outcome).toBe("failed")
   })
 
-  it("deletes existing entries for the key first, so no stale target survives", async () => {
-    // The real failure: upserting production+preview beside an existing
-    // preview-only entry left two, and preview kept the old password.
-    const methods: string[] = []
-    const urls: string[] = []
-    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
-      urls.push(String(url))
-      methods.push(init?.method ?? "GET")
-      if (String(url).endsWith("/env") && (init?.method ?? "GET") === "GET") {
-        return new Response(
-          JSON.stringify({
-            envs: [
-              { id: "stale-preview", key: "WERFT_PASSWORD_HASH" },
-              { id: "other-var", key: "DATABASE_URL" },
-            ],
-          }),
-          { status: 200 },
-        )
-      }
-      return new Response("{}", { status: 200 })
+  it("sends the hash as a literal production value, and updates it in place when it exists", async () => {
+    // A scrypt hash is full of `$`; anything but a literal value mangles it.
+    // An existing entry is PATCHed, not duplicated, so one value stays in force.
+    const calls = fakeCoolify({ firstEnvStatus: 409 })
+    await refreshFleet(HASH, [apps[0] as FleetApp], coolify, () => {})
+    const envCalls = calls.filter((c) => c.url.includes("/applications/app-live/envs"))
+    expect(envCalls.map((c) => c.method)).toEqual(["POST", "PATCH"])
+    const sent = JSON.parse(envCalls[1]?.body ?? "{}")
+    expect(sent).toMatchObject({
+      key: "WERFT_PASSWORD_HASH",
+      value: HASH,
+      is_literal: true,
+      is_preview: false,
     })
-    const exec = await import("./exec.ts")
-    vi.spyOn(exec, "exec").mockResolvedValue({ code: 0, stdout: "", stderr: "" })
-
-    await refreshFleet(HASH, [apps[0] as FleetApp], "tok", () => {})
-
-    expect(urls.some((u) => u.endsWith("/env/stale-preview"))).toBe(true)
-    // Another variable's entry must survive untouched.
-    expect(urls.some((u) => u.endsWith("/env/other-var"))).toBe(false)
-  })
-
-  it("upserts both targets, so a preview deployment accepts the password too", async () => {
-    const bodies: string[] = []
-    const urls: string[] = []
-    vi.stubGlobal("fetch", async (url: string | URL, init?: RequestInit) => {
-      urls.push(String(url))
-      if (typeof init?.body === "string") bodies.push(init.body)
-      return new Response("{}", { status: 200 })
-    })
-    const exec = await import("./exec.ts")
-    vi.spyOn(exec, "exec").mockResolvedValue({ code: 0, stdout: "", stderr: "" })
-
-    await refreshFleet(HASH, [apps[0] as FleetApp], "tok", () => {})
-    // Not urls[0]: existing entries are listed and cleared before the upsert.
-    expect(urls.some((url) => url.includes("upsert=true"))).toBe(true)
-    const sent = JSON.parse(bodies[0] ?? "{}")
-    expect(sent.target).toEqual(["production", "preview"])
-    expect(sent.key).toBe("WERFT_PASSWORD_HASH")
   })
 })

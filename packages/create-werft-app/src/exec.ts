@@ -11,7 +11,7 @@ export type ExecOptions = {
   env?: Record<string, string>
   /** Inherit stdio instead of capturing, for commands with long live output. */
   stream?: boolean
-  /** Written to stdin and closed — how `vercel env add` takes a value. */
+  /** Written to stdin and closed — how secrets and SQL reach a command without argv. */
   input?: string
 }
 

@@ -10,11 +10,11 @@ const BASE_URL = externalBaseUrl ?? `http://127.0.0.1:${PORT}`
  *
  * The environment below is deliberately fake. The smoke test never signs in,
  * so nothing reaches the database — which is what keeps this runnable without
- * a Neon project. Testing a real sign-in belongs against a preview URL with
+ * a database. Testing a real sign-in belongs against a preview URL with
  * real environment, not here.
  *
  * PLAYWRIGHT_BASE_URL, when set, points the same spec at an already-deployed
- * URL — a Vercel preview, say — instead of starting a local server. This is
+ * URL — a Coolify PR preview, say — instead of starting a local server. This is
  * what the PR pipeline's smoke gate uses; nothing in the spec itself changes.
  */
 export default defineConfig({
@@ -36,8 +36,8 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
         env: {
-          // Auth.js infers the host on Vercel, but rejects an arbitrary one when
-          // self-hosted — including 127.0.0.1 here.
+          // Auth.js rejects an arbitrary host when self-hosted unless told to
+          // trust it — including 127.0.0.1 here.
           AUTH_TRUST_HOST: "true",
           AUTH_SECRET: "smoke-test-secret-that-is-long-enough-to-pass",
           DATABASE_URL: "postgresql://smoke:smoke@127.0.0.1:1/smoke",

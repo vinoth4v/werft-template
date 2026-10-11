@@ -43,11 +43,8 @@ describe("parseArgs", () => {
     expect(parse("--deploy").deploy).toBe(true)
   })
 
-  it("leaves Vercel SSO off unless asked for", () => {
-    // The app's own gate is the access control; SSO would gate the whole
-    // deployment and break Phase 2 preview URLs.
-    expect(parse().vercelSso).toBe(false)
-    expect(parse("--vercel-sso").vercelSso).toBe(true)
+  it("no longer accepts --vercel-sso (apps run on Coolify, not Vercel)", () => {
+    expect(parseArgs(["--vercel-sso"]).ok).toBe(false)
   })
 
   it("accepts --dry-run", () => {
@@ -94,7 +91,10 @@ describe("parseArgs", () => {
     ]) {
       expect(text, flag).toContain(flag)
     }
-    expect(text).toContain("NEON_API_KEY")
+    for (const name of ["COOLIFY_API_URL", "COOLIFY_API_TOKEN", "APPS_DB_ADMIN_URL"]) {
+      expect(text, name).toContain(name)
+    }
+    expect(text).not.toContain("NEON_API_KEY")
   })
 })
 

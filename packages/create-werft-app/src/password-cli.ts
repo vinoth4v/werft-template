@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
+import { coolifyFromEnv } from "./coolify.ts"
 import { exec } from "./exec.ts"
 import {
   fetchFleet,
@@ -12,7 +13,6 @@ import {
   refreshFleet,
   writeStandingHash,
 } from "./operator-password.ts"
-import { resolveVercelToken } from "./vercel.ts"
 
 /**
  * `pnpm werft-password` — set the one operator password, everywhere.
@@ -23,9 +23,15 @@ import { resolveVercelToken } from "./vercel.ts"
  *
  * The password is read from a hidden prompt or a pipe and never written down:
  * what is stored, set and pushed is the scrypt hash.
+ *
+ * Existing apps run on Coolify, whose API is only reachable inside the home
+ * network. On a laptop this therefore sets the GitHub secret and starts
+ * werft-template's refresh-password.yml, which runs `--fleet-only` on the home
+ * runner with that secret as WERFT_PASSWORD_HASH. On the runner it updates the
+ * apps directly.
  */
 
-const REGISTRY = process.env.WERFT_REGISTRY_URL ?? "https://werft-marketplace.vercel.app"
+const REGISTRY = process.env.WERFT_REGISTRY_URL ?? "https://werft-marketplace.vinothkannan.de"
 
 async function readSharedFile(name: string): Promise<string> {
   return (await readFile(join(homedir(), ".config", "werft", name), "utf8").catch(() => "")).trim()
@@ -40,6 +46,7 @@ secret so new apps get it, and pushes it to every app already delivered.
 options:
   --no-fleet       only store the hash and set the secret; leave existing apps
   --fleet-only     only refresh existing apps, using the stored hash
+                   (or WERFT_PASSWORD_HASH, which is how the home runner gets it)
   --help
 
 The password is read from a hidden prompt, or from stdin when piped:
@@ -90,12 +97,19 @@ async function main(): Promise<number> {
   let hash = ""
 
   if (fleetOnly) {
-    hash = await readStandingHash()
+    const fromEnv = (process.env.WERFT_PASSWORD_HASH ?? "").trim()
+    hash = looksLikeHash(fromEnv) ? fromEnv : await readStandingHash()
     if (!looksLikeHash(hash)) {
-      console.error(`no usable hash at ${HASH_PATH} — run without --fleet-only to set one`)
+      console.error(
+        `no usable hash in WERFT_PASSWORD_HASH or ${HASH_PATH} — run without --fleet-only to set one`,
+      )
       return 1
     }
-    console.log(`Using the stored hash from ${HASH_PATH}`)
+    console.log(
+      looksLikeHash(fromEnv)
+        ? "Using the hash from WERFT_PASSWORD_HASH"
+        : `Using the stored hash from ${HASH_PATH}`,
+    )
   } else {
     const password = await promptHidden("New operator password: ")
     if (password === "") {
@@ -137,6 +151,39 @@ async function main(): Promise<number> {
     return 0
   }
 
+  // Off the home network: hand the fleet to the home runner, which can reach
+  // Coolify. The secret is (re)set first so the workflow pushes this hash.
+  const coolify = coolifyFromEnv()
+  if (!coolify) {
+    const armed = await exec(
+      "gh",
+      ["secret", "set", "WERFT_PASSWORD_HASH", "--repo", "vinoth4v/werft-template"],
+      { input: hash },
+    )
+    if (armed.code !== 0) {
+      console.error(
+        `\ncould not set the WERFT_PASSWORD_HASH secret (${armed.stderr.split("\n")[0] ?? "unknown"}) — existing apps unchanged`,
+      )
+      return 1
+    }
+    const started = await exec("gh", [
+      "workflow",
+      "run",
+      "refresh-password.yml",
+      "--repo",
+      "vinoth4v/werft-template",
+    ])
+    if (started.code !== 0) {
+      console.error(
+        `\ncould not start refresh-password.yml (${started.stderr.split("\n")[0] ?? "unknown"}) — existing apps unchanged`,
+      )
+      return 1
+    }
+    console.log("\nThe home runner is updating every Werft app on Coolify (refresh-password.yml).")
+    console.log("Follow it with: gh run watch --repo vinoth4v/werft-template")
+    return 0
+  }
+
   // Environment first, then the durable file — the same order every other
   // shared secret in this project resolves in.
   const token = process.env.WERFT_REGISTRY_TOKEN || (await readSharedFile("registry-token"))
@@ -169,14 +216,8 @@ async function main(): Promise<number> {
   }
   console.log(`${delivered.length} of them: ${delivered.map((a) => a.name).join(", ")}`)
 
-  const auth = await resolveVercelToken()
-  if (!auth) {
-    console.error("\nno Vercel API token — run `vercel login` or set VERCEL_TOKEN")
-    return 1
-  }
-
   console.log(`\nRefreshing ${delivered.length} app${delivered.length === 1 ? "" : "s"}:`)
-  const outcomes = await refreshFleet(hash, delivered, auth.token, (line) => console.log(line))
+  const outcomes = await refreshFleet(hash, delivered, coolify, (line) => console.log(line))
 
   const failed = outcomes.filter((o) => o.outcome === "failed" || o.outcome === "env-only")
   console.log(

@@ -29,7 +29,7 @@ export type WerftJson = {
   private: boolean
 }
 
-/** Doubles as the GitHub repo, Neon project, and Vercel project name. */
+/** Doubles as the GitHub repo, database, Coolify application and subdomain name. */
 export const NAME_PATTERN = /^[a-z][a-z0-9-]{0,38}[a-z0-9]$/
 
 const KEY_ORDER = [
